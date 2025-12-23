@@ -2483,6 +2483,11 @@ ${url}
                 const sizeStr = (rec.size / (1024*1024)).toFixed(2) + ' MB';
                 const durationStr = this._formatDuration(rec.duration);
                 
+                // Disable play button for very small files (likely incomplete)
+                const isIncomplete = rec.size < 1024 * 100;  // Less than 100KB
+                const playButtonDisabled = isIncomplete ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : '';
+                const playTooltip = isIncomplete ? ' title="Recording still in progress or too small"' : '';
+                
                 recordingsHTML += `
                     <div class="recording-item">
                         <div class="recording-info">
@@ -2494,7 +2499,7 @@ ${url}
                             </div>
                         </div>
                         <div class="recording-actions">
-                            <button class="btn-secondary" onclick="app.playRecording('${rec.filename}')">▶ Play</button>
+                            <button class="btn-secondary" ${playButtonDisabled} onclick="app.playRecording('${rec.filename}')${playTooltip}">▶ Play</button>
                             <button class="btn-secondary" onclick="app.deleteRecording('${rec.filename}')">🗑️ Delete</button>
                         </div>
                     </div>
@@ -2536,10 +2541,9 @@ ${url}
                     <button class="modal-close" onclick="document.getElementById('recordingPlayerModal').remove()">✕</button>
                 </div>
                 <div class="modal-body" style="flex: 1; display: flex; align-items: center; justify-content: center; background: #000;">
-                    <video id="recordingPlayer" width="100%" height="100%" style="object-fit: contain;" controls>
-                        <source src="${recordingUrl}" type="video/mp2t">
-                        Your browser does not support the video tag.
-                    </video>
+                    <div id="recordingPlayerContainer" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+                        <p style="color: #fff;">Loading recording...</p>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button class="btn-secondary" onclick="document.getElementById('recordingPlayerModal').remove()">Close</button>
@@ -2550,13 +2554,55 @@ ${url}
         playerModal.innerHTML = html;
         document.body.appendChild(playerModal);
         
-        // Auto-play the video
+        // Use mpegts.js to play the recording (handles MPEG-TS format properly)
         setTimeout(() => {
-            const video = document.getElementById('recordingPlayer');
-            if (video) video.play();
+            const container = document.getElementById('recordingPlayerContainer');
+            if (!container) return;
+            
+            if (window.mpegts) {
+                try {
+                    // Create video element
+                    const video = document.createElement('video');
+                    video.style.width = '100%';
+                    video.style.height = '100%';
+                    video.style.objectFit = 'contain';
+                    video.controls = true;
+                    
+                    container.innerHTML = '';
+                    container.appendChild(video);
+                    
+                    const player = window.mpegts.createPlayer({
+                        type: 'mse',
+                        isLive: false,
+                        url: recordingUrl
+                    });
+                    
+                    player.attachMediaElement(video);
+                    player.load();
+                    player.play();
+                    
+                    console.log('[RECORD] Playing with mpegts.js');
+                    this.showToast('Playing recording...', 'success');
+                    
+                    // Cleanup on modal close
+                    const checkClose = setInterval(() => {
+                        if (!document.getElementById('recordingPlayerModal')) {
+                            clearInterval(checkClose);
+                            if (player) {
+                                player.destroy();
+                            }
+                        }
+                    }, 100);
+                } catch (e) {
+                    console.error('[RECORD] mpegts error:', e);
+                    container.innerHTML = `<p style="color: red;">Error: ${e.message}</p>`;
+                    this.showToast('Error playing recording: ' + e.message, 'error');
+                }
+            } else {
+                container.innerHTML = '<p style="color: red;">Player library not loaded</p>';
+                this.showToast('Player library not available', 'error');
+            }
         }, 100);
-        
-        this.showToast('Playing recording...', 'success');
     }
 
     deleteRecording(filename) {
