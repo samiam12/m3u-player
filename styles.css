@@ -651,7 +651,17 @@ body.video-playing .player-toolbar .player-toolbar-right { max-width: 40%; }
     border-top: 1px solid rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(8px);
     z-index: 500;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
 }
+
+.player-wrapper:fullscreen .player-controls,
+.player-wrapper.fake-fullscreen .player-controls {
+    opacity: 1;
+    pointer-events: auto;
+}
+
 
 .player-controls-left {
     display: flex;

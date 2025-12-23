@@ -734,6 +734,12 @@ class M3UPlayerApp {
             if (isFakeFullscreen) {
                 this.exitFakeFullscreen(target);
             }
+            // Hide controls
+            if (this.playerControls) {
+                this.playerControls.style.opacity = '0';
+                this.playerControls.style.pointerEvents = 'none';
+            }
+            this.hideChannelSwitcher();
             return;
         }
 
@@ -742,6 +748,12 @@ class M3UPlayerApp {
             this.sendDebugLog('Calling requestFullscreen...');
             target.requestFullscreen().then(() => {
                 this.sendDebugLog('requestFullscreen SUCCESS');
+                // Show controls overlay
+                if (this.playerControls) {
+                    this.playerControls.style.opacity = '1';
+                    this.playerControls.style.pointerEvents = 'auto';
+                }
+                this.showChannelSwitcher();
             }).catch(err => {
                 this.sendDebugLog(`requestFullscreen FAILED: ${err.message}`, 'ERROR');
                 // Fallback for standalone mode where fullscreen API doesn't work
@@ -752,11 +764,22 @@ class M3UPlayerApp {
         } else if (target && target.webkitRequestFullscreen) {
             this.sendDebugLog('Calling webkitRequestFullscreen...');
             target.webkitRequestFullscreen();
+            // Show controls overlay
+            if (this.playerControls) {
+                this.playerControls.style.opacity = '1';
+                this.playerControls.style.pointerEvents = 'auto';
+            }
+            this.showChannelSwitcher();
             this.sendDebugLog('webkitRequestFullscreen SUCCESS');
         } else if (isStandalone) {
             // Standalone mode fallback when no fullscreen API available
             this.sendDebugLog('Using fake fullscreen for standalone mode');
             this.enterFakeFullscreen(target);
+            if (this.playerControls) {
+                this.playerControls.style.opacity = '1';
+                this.playerControls.style.pointerEvents = 'auto';
+            }
+            this.showChannelSwitcher();
         } else {
             this.sendDebugLog('requestFullscreen not available', 'ERROR');
         }
