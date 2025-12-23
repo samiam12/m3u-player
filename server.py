@@ -469,7 +469,8 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         cmd = [
                             ffmpeg_cmd,
                             '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                            '-timeout', '5',
+                            '-timeout', '30',  # 30 second timeout for TLS handshake
+                            '-rtsp_transport', 'tcp',  # Use TCP for more reliable connections
                             '-i', url,
                             '-c', 'copy',  # Copy codecs without re-encoding
                             '-t', '36000',  # Max 10 hours
