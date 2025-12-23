@@ -468,13 +468,11 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         # Use ffmpeg to record the stream
                         cmd = [
                             ffmpeg_cmd,
-                            '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                            '-timeout', '10',  # 10 second timeout
+                            '-user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                             '-i', url,
                             '-c', 'copy',  # Copy codecs without re-encoding
                             '-t', '36000',  # Max 10 hours
-                            '-loglevel', 'debug',  # Show debug info to see what's happening
-                            '-v', 'verbose',
+                            '-loglevel', 'info',  # Info level logging
                             str(filepath)
                         ]
                         
