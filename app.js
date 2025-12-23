@@ -2367,13 +2367,17 @@ ${url}
     stopRecording() {
         if (!this.isRecording) return;
         
+        // Stop immediately on UI
+        this.isRecording = false;
+        this.recordingStartTime = null;
+        
         const recordBtn = document.getElementById('videoRecordBtn');
         if (recordBtn) {
             recordBtn.classList.remove('active');
             recordBtn.style.backgroundColor = '';
         }
         
-        const duration = Math.round((new Date() - this.recordingStartTime) / 1000);
+        const duration = Math.round((new Date() - this.recordingStartTime) / 1000) || 0;
         const minutes = Math.floor(duration / 60);
         const seconds = duration % 60;
         
@@ -2397,15 +2401,11 @@ ${url}
             console.log('[RECORD] Stop response:', res);
             if (res.success) {
                 console.log('Recording stopped on server');
-                this.isRecording = false;
-                this.recordingStartTime = null;
                 // Refresh recordings list
                 this.loadRecordings();
             }
         }).catch(err => {
             console.error('Recording stop error:', err);
-            this.isRecording = false;
-            this.recordingStartTime = null;
         });
     }
 
@@ -2514,12 +2514,38 @@ ${url}
     playRecording(filename) {
         const recordingUrl = `/recording/play?file=${encodeURIComponent(filename)}`;
         
-        // Load the recording in the video player
-        this.loadStream(recordingUrl, 'Recording: ' + filename);
+        // Create a new modal for playing the recording
+        const playerModal = document.createElement('div');
+        playerModal.id = 'recordingPlayerModal';
+        playerModal.className = 'modal open';
         
-        // Close modal
-        const modal = document.getElementById('recordingsModal');
-        if (modal) modal.remove();
+        const html = `
+            <div class="modal-backdrop" onclick="document.getElementById('recordingPlayerModal').remove()"></div>
+            <div class="modal-card" style="max-width: 90%; height: 90%; display: flex; flex-direction: column;">
+                <div class="modal-header">
+                    <h2>📹 Playing: ${filename}</h2>
+                    <button class="modal-close" onclick="document.getElementById('recordingPlayerModal').remove()">✕</button>
+                </div>
+                <div class="modal-body" style="flex: 1; display: flex; align-items: center; justify-content: center; background: #000;">
+                    <video id="recordingPlayer" width="100%" height="100%" style="object-fit: contain;" controls>
+                        <source src="${recordingUrl}" type="video/mp2t">
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" onclick="document.getElementById('recordingPlayerModal').remove()">Close</button>
+                </div>
+            </div>
+        `;
+        
+        playerModal.innerHTML = html;
+        document.body.appendChild(playerModal);
+        
+        // Auto-play the video
+        setTimeout(() => {
+            const video = document.getElementById('recordingPlayer');
+            if (video) video.play();
+        }, 100);
         
         this.showToast('Playing recording...', 'success');
     }
@@ -2558,7 +2584,7 @@ ${url}
     showScheduleRecordingModal() {
         const modal = document.createElement('div');
         modal.id = 'scheduleModal';
-        modal.className = 'modal';
+        modal.className = 'modal open';
         
         // Get current time and add 1 hour as default
         const now = new Date();
@@ -2572,7 +2598,8 @@ ${url}
         });
         
         const html = `
-            <div class="modal-content">
+            <div class="modal-backdrop"></div>
+            <div class="modal-card">
                 <div class="modal-header">
                     <h2>⏱️ Schedule Recording</h2>
                     <button class="modal-close" onclick="document.getElementById('scheduleModal').remove()">✕</button>
