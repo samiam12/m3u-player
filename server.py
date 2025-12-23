@@ -23,33 +23,8 @@ from pathlib import Path
 # Use PORT from environment (Render) or default to 8002
 PORT = int(os.environ.get('PORT', 8002))
 
-# Setup ffmpeg path for Render environment
-home_dir = os.path.expanduser('~')
-ffmpeg_path = os.path.join(home_dir, '.local', 'bin', 'ffmpeg')
-
-# Try multiple locations for ffmpeg
-ffmpeg_locations = [
-    ffmpeg_path,  # Render build location
-    '/usr/bin/ffmpeg',  # Linux standard
-    '/usr/local/bin/ffmpeg',  # Homebrew on Mac
-    shutil.which('ffmpeg')  # System PATH
-]
-
-# Find the first available ffmpeg
-actual_ffmpeg_path = None
-for path in ffmpeg_locations:
-    if path and os.path.exists(path):
-        actual_ffmpeg_path = path
-        break
-
-if actual_ffmpeg_path:
-    os.environ['PATH'] = f"{os.path.dirname(actual_ffmpeg_path)}:{os.environ.get('PATH', '')}"
-    ffmpeg_cmd = actual_ffmpeg_path
-else:
-    ffmpeg_cmd = 'ffmpeg'  # Hope it's in PATH
-
 print("[SERVER] Starting M3U Player Server")
-print(f"[SERVER] ffmpeg command: {ffmpeg_cmd}")
+print(f"[SERVER] Using Streamlink for recording")
 print(f"[SERVER] PORT: {PORT}")
 
 # In-memory party and chat storage
@@ -465,20 +440,18 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 def record_stream():
                     try:
                         print(f"[RECORDING] Starting: {filename} from {channel}", flush=True)
-                        # Use ffmpeg to record the stream
+                        # Use streamlink to record the stream
                         cmd = [
-                            ffmpeg_cmd,
-                            '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                            '-timeout', '30',  # 30 second timeout for TLS handshake
-                            '-rtsp_transport', 'tcp',  # Use TCP for more reliable connections
-                            '-i', url,
-                            '-c', 'copy',  # Copy codecs without re-encoding
-                            '-t', '36000',  # Max 10 hours
-                            '-loglevel', 'error',  # Show only errors
-                            str(filepath)
+                            'streamlink',
+                            '--hls-segment-timeout', '30',
+                            '--retry-stream', '3',
+                            '--http-header', 'User-Agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                            url,
+                            'best',  # Best quality
+                            '-o', str(filepath)
                         ]
                         
-                        print(f"[RECORDING] ffmpeg command: {' '.join(cmd)}", flush=True)
+                        print(f"[RECORDING] streamlink command: {' '.join(cmd)}", flush=True)
                         print(f"[RECORDING] URL: {url}", flush=True)
                         
                         process = subprocess.Popen(
@@ -499,13 +472,12 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         print(f"[RECORDING] Process completed: {filename}", flush=True)
                         print(f"[RECORDING] Return code: {process.returncode}", flush=True)
                         if stderr_data:
-                            # Print all stderr, not just first 500 chars
                             print(f"[RECORDING] stderr ({len(stderr_data)} bytes):", flush=True)
                             print(stderr_data, flush=True)
                         
-                        # Check if ffmpeg succeeded
+                        # Check if streamlink succeeded
                         if process.returncode != 0:
-                            print(f"[RECORDING] ffmpeg failed with return code {process.returncode}", flush=True)
+                            print(f"[RECORDING] streamlink failed with return code {process.returncode}", flush=True)
 
                         
                         # Store recording info
