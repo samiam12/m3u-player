@@ -317,7 +317,10 @@
       <div id="chatWidget" class="chat-widget" style="display: none;">
         <div class="chat-header" id="chatDragHandle" style="cursor: grab; user-select: none;">
           <div class="chat-title">Group Chat</div>
-          <button class="btn-icon" id="closeChatBtn" title="Close Chat">✖</button>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn-icon" id="minimizeChatBtn" title="Minimize Chat">−</button>
+            <button class="btn-icon" id="closeChatBtn" title="Close Chat">✖</button>
+          </div>
         </div>
         <div id="chatMessages" class="chat-messages"></div>
         <div class="chat-input-container">

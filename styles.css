@@ -2331,6 +2331,17 @@ body.sidebar-collapsed::before:hover {
     z-index: 1000;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     animation: slideInUp 0.3s ease-out;
+    transition: max-height 0.3s ease, height 0.3s ease;
+}
+
+.chat-widget.chat-widget-minimized {
+    max-height: 45px;
+    height: 45px;
+}
+
+.chat-widget.chat-widget-minimized .chat-messages,
+.chat-widget.chat-widget-minimized .chat-input-container {
+    display: none;
 }
 
 .chat-header {

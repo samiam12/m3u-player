@@ -428,6 +428,11 @@ class M3UPlayerApp {
         if (closeChatBtn) {
             closeChatBtn.addEventListener('click', () => this.hideChatWidget());
         }
+        
+        const minimizeChatBtn = document.getElementById('minimizeChatBtn');
+        if (minimizeChatBtn) {
+            minimizeChatBtn.addEventListener('click', () => this.toggleMinimizeChatWidget());
+        }
 
         // Chat widget draggable
         this.initializeChatDragable();
@@ -3244,11 +3249,17 @@ ${url}
     showChatWidget() {
         const widget = document.getElementById('chatWidget');
         widget.style.display = 'flex';
+        widget.classList.remove('chat-widget-minimized');
     }
 
     hideChatWidget() {
         const widget = document.getElementById('chatWidget');
         widget.style.display = 'none';
+    }
+
+    toggleMinimizeChatWidget() {
+        const widget = document.getElementById('chatWidget');
+        widget.classList.toggle('chat-widget-minimized');
     }
 
     initializeChatDragable() {
