@@ -2603,8 +2603,9 @@ ${url}
         hud.className = 'video-controls-hud';
         hud.innerHTML = `
             <div class="video-progress-container">
-                <div class="video-progress-bar" id="videoProgressBar" style="--progress: 0%"></div>
-                <div class="video-buffer-bar" id="videoBufferBar" style="--buffer: 0%"></div>
+                <div class="video-progress-bar" id="videoProgressBar" style="--progress: 0%">
+                    <div class="video-buffer-bar" id="videoBufferBar" style="--buffer: 0%"></div>
+                </div>
                 <div class="video-time" id="videoTime">0:00 / LIVE</div>
             </div>
             <div class="video-control-buttons">
@@ -2615,7 +2616,7 @@ ${url}
                     <button class="video-control-btn" id="videoMuteBtn" title="Mute/Unmute">
                         <span id="muteBtnIcon">🔊</span>
                     </button>
-                    <input type="range" id="videoVolumeSlider" class="video-volume-slider" min="0" max="100" value="100">
+                    <input type="range" id="videoVolumeSlider" class="video-volume-slider" min="0" max="100" value="100" style="display: flex;">
                     <button class="video-control-btn" id="videoCaptionsBtn" title="Toggle Captions">
                         <span id="captionsBtnIcon">CC</span>
                     </button>
@@ -2663,6 +2664,7 @@ ${url}
             muteBtn.addEventListener('click', () => {
                 this.videoPlayer.muted = !this.videoPlayer.muted;
                 this.updateMuteButtonState();
+                this.updateVolumeSliderVisibility();
             });
         }
         if (captionsBtn) {
@@ -2837,6 +2839,14 @@ ${url}
         const muteBtnIcon = document.getElementById('muteBtnIcon');
         if (muteBtnIcon) {
             muteBtnIcon.textContent = this.videoPlayer.muted ? '🔇' : '🔊';
+        }
+    }
+
+    updateVolumeSliderVisibility() {
+        const volumeSlider = document.getElementById('videoVolumeSlider');
+        if (volumeSlider) {
+            // Hide slider if muted, show if not muted
+            volumeSlider.style.display = this.videoPlayer.muted ? 'none' : 'flex';
         }
     }
 
