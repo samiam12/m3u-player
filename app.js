@@ -2408,20 +2408,6 @@ ${url}
             this.recordingStartTime = null;
         });
     }
-        }).then(r => r.json()).then(res => {
-            if (res.success) {
-                console.log('Recording stopped on server');
-                this.isRecording = false;
-                this.recordingStartTime = null;
-                // Refresh recordings list
-                this.loadRecordings();
-            }
-        }).catch(err => {
-            console.error('Recording stop error:', err);
-            this.isRecording = false;
-            this.recordingStartTime = null;
-        });
-    }
 
     loadRecordings() {
         console.log('[RECORD] Loading recordings...');
