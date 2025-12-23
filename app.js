@@ -2702,13 +2702,14 @@ ${url}
                 }
             });
         }
-
         // Volume slider
         const volumeSlider = document.getElementById('videoVolumeSlider');
         if (volumeSlider) {
             volumeSlider.addEventListener('input', (e) => {
                 const volume = parseInt(e.target.value);
                 this.videoPlayer.volume = volume / 100;
+                // Update slider background gradient to show blue progress
+                e.target.style.setProperty('--slider-value', `${volume}%`);
                 // Update mute button icon
                 const muteBtnIcon = document.getElementById('muteBtnIcon');
                 if (muteBtnIcon) {
@@ -2721,6 +2722,9 @@ ${url}
                     }
                 }
             });
+            // Initialize slider background on page load
+            const initialVolume = parseInt(volumeSlider.value);
+            volumeSlider.style.setProperty('--slider-value', `${initialVolume}%`);
         }
 
         // Update HUD on video time update
@@ -3594,7 +3598,7 @@ ${url}
             const overrides = this.channelOverrides[channel.id] || {};
             const displayName = overrides.name || channel.name;
             const displayGroup = overrides.group || channel.group || 'Uncategorized';
-            const logoUrl = overrides.logo || channel.tvgIcon || '';
+            const logoUrl = overrides.logo || channel.tvgLogo || channel.logo || '';
             
             // Get current EPG program for this channel
             let epgInfo = '';
@@ -3615,7 +3619,8 @@ ${url}
             
             item.innerHTML = `
                 <div class="channel-item-content">
-                    ${logoUrl ? `<img class="channel-item-logo" src="${logoUrl}" alt="${displayName}">` : '<div class="channel-item-logo-placeholder">📺</div>'}
+                    ${logoUrl ? `<img class="channel-item-logo" src="${logoUrl}" alt="${displayName}" onerror="this.style.display='none';this.parentElement.querySelector('.channel-item-logo-placeholder')?.style.display='flex';">` : ''}
+                    <div class="channel-item-logo-placeholder" style="${logoUrl ? 'display:none;' : 'display:flex;'}">📺</div>
                     <div class="channel-item-info">
                         <div class="channel-item-name">${displayName}</div>
                         <div class="channel-item-group">${displayGroup}</div>
