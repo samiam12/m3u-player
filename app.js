@@ -143,7 +143,14 @@ class M3UPlayerApp {
         this.nowPlayingSub = document.getElementById('nowPlayingSub');
 
         // Player controls
-        this.channelSwitcherBtn = document.getElementById('channelSwitcherBtn');
+        this.fullscreenHUD = document.getElementById('fullscreenHUD');
+        this.hudChannelSwitcherBtn = document.getElementById('hudChannelSwitcherBtn');
+        this.hudVolumeBtn = document.getElementById('hudVolumeBtn');
+        this.hudVolumeSlider = document.getElementById('hudVolumeSlider');
+        this.hudFullscreenExitBtn = document.getElementById('hudFullscreenExitBtn');
+        this.hudBufferFill = document.querySelector('.hud-buffer-fill');
+        this.hudBufferText = document.getElementById('hudBufferText');
+        this.keyboardHints = document.getElementById('keyboardHints');
         this.channelSwitcherModal = document.getElementById('channelSwitcherModal');
         this.closeChannelSwitcherBtn = document.getElementById('closeChannelSwitcherBtn');
         this.channelSwitcherList = document.getElementById('channelSwitcherList');
@@ -316,8 +323,20 @@ class M3UPlayerApp {
         }
 
         // Player controls
-        if (this.channelSwitcherBtn) {
-            this.channelSwitcherBtn.addEventListener('click', () => this.showChannelSwitcherModal());
+        if (this.hudChannelSwitcherBtn) {
+            this.hudChannelSwitcherBtn.addEventListener('click', () => this.showChannelSwitcherModal());
+        }
+        if (this.hudVolumeSlider) {
+            this.hudVolumeSlider.addEventListener('input', (e) => {
+                this.volume = parseInt(e.target.value);
+                this.updateHUDVolume();
+            });
+        }
+        if (this.hudVolumeBtn) {
+            this.hudVolumeBtn.addEventListener('click', () => this.toggleHUDMute());
+        }
+        if (this.hudFullscreenExitBtn) {
+            this.hudFullscreenExitBtn.addEventListener('click', () => this.toggleFullscreen());
         }
         if (this.closeChannelSwitcherBtn) {
             this.closeChannelSwitcherBtn.addEventListener('click', () => this.hideChannelSwitcherModal());
@@ -706,6 +725,9 @@ class M3UPlayerApp {
             if (isFakeFullscreen) {
                 this.exitFakeFullscreen(target);
             }
+            // Hide HUD
+            if (this.fullscreenHUD) this.fullscreenHUD.style.display = 'none';
+            if (this.keyboardHints) this.keyboardHints.style.display = 'none';
             return;
         }
 
@@ -714,21 +736,31 @@ class M3UPlayerApp {
             this.sendDebugLog('Calling requestFullscreen...');
             target.requestFullscreen().then(() => {
                 this.sendDebugLog('requestFullscreen SUCCESS');
+                // Show HUD
+                if (this.fullscreenHUD) this.fullscreenHUD.style.display = 'flex';
+                if (this.keyboardHints) this.keyboardHints.style.display = 'block';
             }).catch(err => {
                 this.sendDebugLog(`requestFullscreen FAILED: ${err.message}`, 'ERROR');
                 // Fallback for standalone mode where fullscreen API doesn't work
                 if (isStandalone) {
                     this.enterFakeFullscreen(target);
+                    if (this.fullscreenHUD) this.fullscreenHUD.style.display = 'flex';
+                    if (this.keyboardHints) this.keyboardHints.style.display = 'block';
                 }
             });
         } else if (target && target.webkitRequestFullscreen) {
             this.sendDebugLog('Calling webkitRequestFullscreen...');
             target.webkitRequestFullscreen();
+            // Show HUD
+            if (this.fullscreenHUD) this.fullscreenHUD.style.display = 'flex';
+            if (this.keyboardHints) this.keyboardHints.style.display = 'block';
             this.sendDebugLog('webkitRequestFullscreen SUCCESS');
         } else if (isStandalone) {
             // Standalone mode fallback when no fullscreen API available
             this.sendDebugLog('Using fake fullscreen for standalone mode');
             this.enterFakeFullscreen(target);
+            if (this.fullscreenHUD) this.fullscreenHUD.style.display = 'flex';
+            if (this.keyboardHints) this.keyboardHints.style.display = 'block';
         } else {
             this.sendDebugLog('requestFullscreen not available', 'ERROR');
         }
@@ -3545,6 +3577,52 @@ ${url}
             
             this.channelSwitcherList.appendChild(item);
         });
+    }
+
+    updateHUDVolume() {
+        if (this.videoPlayer) {
+            this.videoPlayer.volume = this.volume / 100;
+        }
+        if (this.hudVolumeSlider) {
+            this.hudVolumeSlider.value = this.volume;
+        }
+        if (this.hudVolumeBtn) {
+            if (this.volume === 0) {
+                this.hudVolumeBtn.textContent = '🔇';
+            } else if (this.volume < 50) {
+                this.hudVolumeBtn.textContent = '🔉';
+            } else {
+                this.hudVolumeBtn.textContent = '🔊';
+            }
+        }
+    }
+
+    toggleHUDMute() {
+        if (this.volume === 0) {
+            this.volume = 100;
+        } else {
+            this.volume = 0;
+        }
+        this.updateHUDVolume();
+    }
+
+    updateHUDBufferStatus(status) {
+        if (!this.hudBufferFill || !this.hudBufferText) return;
+        
+        switch (status) {
+            case 'buffering':
+                this.hudBufferFill.style.background = 'linear-gradient(90deg, #FF9800, #F57C00)';
+                this.hudBufferText.textContent = 'Buffering';
+                break;
+            case 'ready':
+                this.hudBufferFill.style.background = 'linear-gradient(90deg, #4CAF50, #45a049)';
+                this.hudBufferText.textContent = 'Ready';
+                break;
+            case 'error':
+                this.hudBufferFill.style.background = 'linear-gradient(90deg, #F44336, #E53935)';
+                this.hudBufferText.textContent = 'Error';
+                break;
+        }
     }
 }
 

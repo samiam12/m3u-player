@@ -636,7 +636,120 @@ body.video-playing .player-toolbar .player-toolbar-right { max-width: 40%; }
     border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* Channel Switcher Modal */
+/* Fullscreen HUD */
+.fullscreen-hud {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 15px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 8px 12px;
+    z-index: 500;
+    pointer-events: auto;
+}
+
+.hud-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.hud-volume {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.hud-volume-slider {
+    width: 80px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.2);
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.hud-volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    cursor: pointer;
+}
+
+.hud-volume-slider::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    cursor: pointer;
+    border: none;
+}
+
+.hud-center {
+    flex: 1;
+    max-width: 200px;
+}
+
+.hud-buffer {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.hud-buffer-bar {
+    flex: 1;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.hud-buffer-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4CAF50, #45a049);
+    width: 100%;
+}
+
+.hud-buffer-text {
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.6);
+    white-space: nowrap;
+}
+
+.hud-right {
+    display: flex;
+    gap: 8px;
+}
+
+/* Keyboard Hints Box */
+.keyboard-hints {
+    position: absolute;
+    bottom: 60px;
+    left: 12px;
+    z-index: 400;
+    pointer-events: none;
+}
+
+.hints-box {
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.7);
+    white-space: nowrap;
+}
+
 .channel-switcher-modal {
     position: fixed;
     top: 0;

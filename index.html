@@ -99,10 +99,34 @@
               <div class="player-info">
                 <h3 id="currentChannelName">No channel selected</h3>
                 <p id="currentChannelInfo">Select a channel from the sidebar</p>
-                <button class="btn-secondary" id="channelSwitcherBtn" style="margin-top: 10px;">📺 Switch Channel</button>
                 <p style="margin-top: 10px; font-size: 0.85rem; color: var(--text-secondary);">
                   Press <kbd>↑</kbd><kbd>↓</kbd> to navigate • <kbd>Space</kbd> to play/pause • <kbd>F</kbd> for fullscreen
                 </p>
+              </div>
+            </div>
+            <!-- Fullscreen HUD Controls -->
+            <div class="fullscreen-hud" id="fullscreenHUD" style="display: none;">
+              <div class="hud-left">
+                <button class="btn-icon" id="hudChannelSwitcherBtn" title="Switch Channel">📺</button>
+                <div class="hud-volume">
+                  <button class="btn-icon" id="hudVolumeBtn" title="Mute">🔊</button>
+                  <input type="range" id="hudVolumeSlider" min="0" max="100" value="100" class="hud-volume-slider">
+                </div>
+              </div>
+              <div class="hud-center">
+                <div class="hud-buffer">
+                  <div class="hud-buffer-bar"><div class="hud-buffer-fill"></div></div>
+                  <span class="hud-buffer-text" id="hudBufferText">Ready</span>
+                </div>
+              </div>
+              <div class="hud-right">
+                <button class="btn-icon" id="hudFullscreenExitBtn" title="Exit Fullscreen">⛶</button>
+              </div>
+            </div>
+            <!-- Keyboard Controls Hint -->
+            <div class="keyboard-hints" id="keyboardHints">
+              <div class="hints-box">
+                <strong>⌨️ Controls:</strong> ↑↓ Navigate • Space Play/Pause • F Fullscreen • 📺 Switch Channel
               </div>
             </div>
             <!-- Channel Switcher Modal -->
