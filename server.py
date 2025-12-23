@@ -38,6 +38,11 @@ RECORDINGS_DIR.mkdir(exist_ok=True)
 ACTIVE_RECORDINGS = {}  # {filename: {"process": Process, "channel": str, "url": str, "startTime": timestamp}}
 RECORDED_FILES = {}  # {filename: {"channel": str, "size": bytes, "duration": seconds, "timestamp": float}}
 
+print("[SERVER] Starting M3U Player Server")
+print(f"[SERVER] ffmpeg path check: {ffmpeg_path} exists: {os.path.exists(ffmpeg_path)}")
+print(f"[SERVER] Recordings directory: {RECORDINGS_DIR.absolute()}")
+print(f"[SERVER] PORT: {PORT}")
+
 def generate_party_code():
     """Generate a random 6-character party code"""
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
@@ -62,6 +67,7 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         """Handle GET requests with proxy support"""
+        print(f"[SERVER] GET {self.path}")
         # Party endpoints
         if self.path.startswith('/party/create'):
             self.handle_party_create()
@@ -90,6 +96,7 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         """Handle POST requests"""
+        print(f"[SERVER] POST {self.path}")
         # Party endpoints
         if self.path.startswith('/party/update'):
             self.handle_party_update()
@@ -411,10 +418,13 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
     def handle_recording_start(self):
         """Start recording a stream"""
+        print("[RECORDING_START] Handler called")
         try:
             content_length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(content_length)
             data = json.loads(body.decode())
+            
+            print(f"[RECORDING_START] Data received: channel={data.get('channel')}, url={data.get('url')}")
             
             channel = data.get('channel', 'Unknown')
             url = data.get('url', '')

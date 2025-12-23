@@ -2336,11 +2336,16 @@ ${url}
             startTime: this.recordingStartTime.toISOString()
         };
         
+        console.log('[RECORD] Sending start request:', data);
         fetch('/recording/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
-        }).then(r => r.json()).then(res => {
+        }).then(r => {
+            console.log('[RECORD] Start response status:', r.status);
+            return r.json();
+        }).then(res => {
+            console.log('[RECORD] Start response:', res);
             if (res.success) {
                 console.log('Recording started on server:', res.recordingId);
             } else {
@@ -2348,6 +2353,7 @@ ${url}
                 recordBtn.classList.remove('active');
                 recordBtn.style.backgroundColor = '';
                 this.showToast('Failed to start recording: ' + (res.error || 'Unknown error'), 'error');
+
             }
         }).catch(err => {
             console.error('Recording start error:', err);
@@ -2374,14 +2380,34 @@ ${url}
         this.showToast(`Recording stopped (${minutes}m ${seconds}s)`, 'success');
         
         // Send stop recording request to server
+        const stopData = {
+            channel: this.currentChannel.name,
+            stopTime: new Date().toISOString(),
+            duration: duration
+        };
+        console.log('[RECORD] Sending stop request:', stopData);
         fetch('/recording/stop', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                channel: this.currentChannel.name,
-                stopTime: new Date().toISOString(),
-                duration: duration
-            })
+            body: JSON.stringify(stopData)
+        }).then(r => {
+            console.log('[RECORD] Stop response status:', r.status);
+            return r.json();
+        }).then(res => {
+            console.log('[RECORD] Stop response:', res);
+            if (res.success) {
+                console.log('Recording stopped on server');
+                this.isRecording = false;
+                this.recordingStartTime = null;
+                // Refresh recordings list
+                this.loadRecordings();
+            }
+        }).catch(err => {
+            console.error('Recording stop error:', err);
+            this.isRecording = false;
+            this.recordingStartTime = null;
+        });
+    }
         }).then(r => r.json()).then(res => {
             if (res.success) {
                 console.log('Recording stopped on server');
@@ -2398,24 +2424,35 @@ ${url}
     }
 
     loadRecordings() {
+        console.log('[RECORD] Loading recordings...');
         fetch('/recording/list')
-            .then(r => r.json())
+            .then(r => {
+                console.log('[RECORD] List response status:', r.status);
+                return r.json();
+            })
             .then(data => {
+                console.log('[RECORD] List response:', data);
                 this.recordings = data.recordings || [];
-                console.log('Loaded recordings:', this.recordings);
+                console.log('[RECORD] Loaded', this.recordings.length, 'recordings');
             })
             .catch(err => console.error('Failed to load recordings:', err));
     }
 
     showRecordingsModal() {
+        console.log('[RECORD] Opening recordings modal');
         // Load recordings first
         fetch('/recording/list')
-            .then(r => r.json())
+            .then(r => {
+                console.log('[RECORD] Modal list response status:', r.status);
+                return r.json();
+            })
             .then(data => {
+                console.log('[RECORD] Modal list response:', data);
                 this.recordings = data.recordings || [];
                 this._displayRecordingsModal();
             })
             .catch(err => {
+                console.error('[RECORD] Modal load error:', err);
                 this.showToast('Failed to load recordings: ' + err.message, 'error');
             });
     }
