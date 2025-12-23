@@ -638,15 +638,19 @@ body.video-playing .player-toolbar .player-toolbar-right { max-width: 40%; }
 
 /* Player Controls */
 .player-controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
     padding: 10px 12px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 8px;
-    margin-top: 10px;
+    background: rgba(0, 0, 0, 0.6);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(8px);
+    z-index: 500;
 }
 
 .player-controls-left {

@@ -11,8 +11,6 @@
     <script src="mpegts.min.js"></script>
   </head>
   <body>
-    <!-- TEST BANNER - VERIFY CHANGES ARE LIVE -->
-    <div style="background: #FF6B6B; color: white; padding: 10px; text-align: center; font-weight: bold; z-index: 10000; position: relative;">✅ NEW UPDATES LOADED - Volume, Buffer, Aspect Ratio, and Channel Switcher Ready</div>
     <div class="app-container">
       <!-- Welcome Animation -->
       <div id="welcomeAnimation" class="welcome-animation">
@@ -107,10 +105,10 @@
               </div>
             </div>
             <!-- Player Controls -->
-            <div class="player-controls" id="playerControls" style="background: red !important; border: 3px solid yellow !important; display: flex !important;">
-              <div class="player-controls-left" style="background: blue !important;">
+            <div class="player-controls" id="playerControls">
+              <div class="player-controls-left">
                 <button class="btn-icon" id="playPauseBtn" title="Play/Pause">⏯</button>
-                <div class="volume-control" style="background: green !important;">
+                <div class="volume-control">
                   <button class="btn-icon" id="volumeBtn" title="Mute">🔊</button>
                   <input type="range" id="volumeSlider" min="0" max="100" value="100" class="volume-slider">
                   <span class="volume-value" id="volumeValue">100%</span>
