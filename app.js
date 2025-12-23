@@ -1774,7 +1774,8 @@ class M3UPlayerApp {
             }
             
             // Start stream health monitor
-            this.startStreamHealthMonitor(channel, null);
+            // DISABLED: Aggressive auto-recovery was interfering with normal stream loading/caching
+            // this.startStreamHealthMonitor(channel, null);
             
         } catch (error) {
             // Don't show error if user cancelled
@@ -2334,7 +2335,8 @@ ${url}
             }
             
             // Start stream health monitor for this slot
-            this.startStreamHealthMonitor(channel, slotIndex);
+            // DISABLED: Aggressive auto-recovery was interfering with normal stream loading/caching
+            // this.startStreamHealthMonitor(channel, slotIndex);
             
         } catch (error) {
             console.error(`Error loading channel into multiview slot ${slotIndex}:`, error);
@@ -2949,12 +2951,26 @@ ${url}
         if (!this.partyCode) return;
         
         try {
-            await fetch(`/party/leave?code=${this.partyCode}`);
+            // Stop all sync loops FIRST
             this.stopPartySyncLoop();
+            
+            // Pause video to prevent audio loop
+            if (this.videoPlayer) {
+                this.videoPlayer.pause();
+            }
+            
+            // Notify server
+            await fetch(`/party/leave?code=${this.partyCode}`);
+            
+            // Clear party state
             this.hideChatWidget();
             this.partyCode = null;
             this.isPartyHost = false;
             this.partyMembers = [];
+            this.lastChatTimestamp = 0;
+            this.sentMessageIds.clear();
+            
+            // Update UI
             this.updatePartyUI();
             this.showToast('Left party', 'info');
         } catch (e) {
@@ -3076,7 +3092,7 @@ ${url}
             if (Date.now() % 1000 < 200) {
                 await this.updatePartyMembersList();
             }
-        }, 50);
+        }, 25);
         
         // Start chat polling
         this.startChatPollLoop();
@@ -3091,6 +3107,8 @@ ${url}
             clearInterval(this.partyChatPollLoop);
             this.partyChatPollLoop = null;
         }
+        // Reset sync tracking
+        this.isSendingMessage = false;
     }
 
     // ============= Chat Methods =============
@@ -3259,10 +3277,18 @@ ${url}
                 }
                 
                 for (const msg of data.messages) {
-                    // Skip if we just sent this message (avoid duplicates)
-                    const msgId = `${msg.username}-${msg.timestamp * 1000}`;
-                    if (!this.sentMessageIds.has(msgId)) {
-                        this.addChatMessageToUI(msg);
+                    // Create unique key for deduplication
+                    const msgKey = `${msg.username}|${msg.text}|${Math.floor(msg.timestamp)}`;
+                    
+                    // Skip if we just sent this message or it's already in the DOM
+                    if (!this.sentMessageIds.has(msgKey)) {
+                        // Also check if message is already displayed
+                        const existingMessages = Array.from(messagesContainer.querySelectorAll('.chat-message-text'))
+                            .map(el => el.textContent);
+                        
+                        if (!existingMessages.includes(msg.text)) {
+                            this.addChatMessageToUI(msg);
+                        }
                     }
                     this.lastChatTimestamp = Math.max(this.lastChatTimestamp, msg.timestamp || 0);
                 }
