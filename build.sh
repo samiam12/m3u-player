@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build script for Render deployment
-# Installs streamlink for robust stream recording
+# Installs dependencies for M3U Player
 
 set -e
 
@@ -12,6 +12,5 @@ if [ -f requirements.txt ]; then
     pip install -r requirements.txt
 fi
 
-echo "Build complete! Streamlink version:"
-streamlink --version
+echo "Build complete!"
 
