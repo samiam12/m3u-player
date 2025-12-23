@@ -3,10 +3,7 @@ services:
     name: m3u-player
     runtime: python
     runtimeVersion: 3.11
-    buildCommand: |
-      apt-get update && \
-      apt-get install -y ffmpeg && \
-      pip install --upgrade pip
+    buildCommand: bash build.sh
     startCommand: python3 server.py
     envVars:
       - key: M3U_PLAYER_NO_BROWSER
