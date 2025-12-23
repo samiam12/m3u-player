@@ -556,8 +556,22 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if rec_info.get('channel') == data.get('channel'):
                     try:
                         print(f"[RECORDING] Terminating process for: {filename}")
-                        rec_info['process'].terminate()
-                        rec_info['process'].wait(timeout=5)
+                        process = rec_info['process']
+                        
+                        # Try graceful shutdown first with SIGTERM
+                        process.terminate()
+                        try:
+                            process.wait(timeout=3)  # Wait 3 seconds for graceful shutdown
+                            print(f"[RECORDING] Process terminated gracefully")
+                        except subprocess.TimeoutExpired:
+                            # If it doesn't shut down gracefully, kill it
+                            print(f"[RECORDING] Process didn't terminate, killing...")
+                            process.kill()
+                            process.wait()
+                        
+                        # Give it a moment for file system to sync
+                        time.sleep(0.5)
+
                         stopped = True
                         print(f"[RECORDING] Stopped: {filename}")
                         break
