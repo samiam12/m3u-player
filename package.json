@@ -1,0 +1,37 @@
+{
+  "name": "m3u-player-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:appimage": "electron-builder --linux AppImage"
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.m3uplayer.desktop",
+    "productName": "M3U Player",
+    "directories": {
+      "buildResources": "assets"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/**",
+      "!systemd/**",
+      "!linux/**"
+    ],
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "AudioVideo"
+    }
+  },
+  "description": "A modern, web-based M3U playlist player with full MPEG-TS support, EPG integration, and channel categorization - similar to TiviMate.",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

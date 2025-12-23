@@ -1,0 +1,15 @@
+[Unit]
+Description=M3U Player local server (CORS proxy)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/m3u-player
+Environment=M3U_PLAYER_NO_BROWSER=1
+ExecStart=/usr/bin/python3 %h/m3u-player/server.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

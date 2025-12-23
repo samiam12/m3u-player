@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>M3U Player - MPEG-TS Player</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="styles.css">
+    <script src="mpegts.min.js"></script>
+  </head>
+  <body>
+    <div class="app-container">
+      <!-- Welcome Animation -->
+      <div id="welcomeAnimation" class="welcome-animation">
+        <div class="welcome-content">
+          <h1>Welcome to</h1>
+          <h2>TVChannels</h2>
+        </div>
+      </div>
+      
+      <!-- Sidebar -->
+      <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <h2>M3U Player</h2>
+          <button class="btn-icon" id="toggleSidebar" title="Toggle Sidebar">☰</button>
+        </div>
+        <div class="sidebar-content">
+          <div class="input-group">
+            <label for="m3uFile">M3U Playlist URL/File:</label>
+            <input type="text" id="m3uFile" value="https://raw.githubusercontent.com/samiam12/tvchannel/refs/heads/main/TVChannels1.m3u" placeholder="Enter M3U URL or upload file">
+            <input type="file" id="m3uFileInput" accept=".m3u,.m3u8" style="display: none;">
+            <button class="btn-secondary" onclick="document.getElementById('m3uFileInput').click()">Browse</button>
+          </div>
+          <div class="input-group">
+            <label for="epgFile">EPG XML URL/File (Optional):</label>
+            <input type="text" id="epgFile" value="https://restream-live.realiptv.to/xmltv.xml" placeholder="Enter EPG XML URL or upload file">
+            <input type="file" id="epgFileInput" accept=".xml" style="display: none;">
+            <button class="btn-secondary" onclick="document.getElementById('epgFileInput').click()">Browse</button>
+          </div>
+          <div class="input-group">
+            <button class="btn-secondary" id="clearAll">Clear All</button>
+          </div>
+          <div class="sidebar-quick">
+            <label class="switch">
+              <input type="checkbox" id="favoritesOnly">
+              <span class="switch-slider"></span>
+              <span class="switch-label">Favorites only</span>
+            </label>
+          </div>
+          <div class="filter-group">
+            <label for="categoryFilter">Filter by Category:</label>
+            <select id="categoryFilter">
+              <option value="">All Categories</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="searchChannels">Search Channels:</label>
+            <input type="text" id="searchChannels" placeholder="Search...">
+          </div>
+          <div class="recents" id="recentsContainer" style="display:none;">
+            <div class="recents-header">
+              <h4>Recently Watched</h4>
+              <button class="btn-icon" id="clearRecents" title="Clear Recents">🗑️</button>
+            </div>
+            <div class="recents-list" id="recentsList"></div>
+          </div>
+          <div class="channels-header">
+            <h4>Channels</h4>
+            <div class="channels-meta" id="channelsMeta">0</div>
+          </div>
+          <div class="channels-list" id="channelsList">
+            <p class="empty-state">Load an M3U playlist to get started</p>
+          </div>
+        </div>
+      </div>
+      <!-- Main Content -->
+      <div class="main-content" id="mainContent">
+        <div class="player-container" id="playerContainer">
+          <div class="player-toolbar" id="playerToolbar">
+            <div class="player-toolbar-left">
+              <div class="player-now">
+                <div class="player-now-title" id="nowPlayingTitle">No channel selected</div>
+                <div class="player-now-sub" id="nowPlayingSub">Select a channel from the sidebar</div>
+              </div>
+            </div>
+            <div class="player-toolbar-right"></div>
+          </div>
+          <div class="player-wrapper" id="playerWrapper">
+            <video
+              id="videoPlayer"
+              autoplay
+              muted
+              playsinline
+              webkit-playsinline
+            ></video>
+            <div class="player-overlay" id="playerOverlay">
+              <div class="player-info">
+                <h3 id="currentChannelName">No channel selected</h3>
+                <p id="currentChannelInfo">Select a channel from the sidebar</p>
+                <p style="margin-top: 10px; font-size: 0.85rem; color: var(--text-secondary);">
+                  Press <kbd>↑</kbd><kbd>↓</kbd> to navigate • <kbd>Space</kbd> to play/pause • <kbd>F</kbd> for fullscreen
+                </p>
+              </div>
+            </div>
+          </div>
+          <!-- Multiview (4-slot) -->
+          <div class="multiview-grid" id="multiViewGrid" style="display: none;">
+            <div class="multiview-slot" data-slot-index="0">
+              <video id="mvVideo0" autoplay muted playsinline webkit-playsinline></video>
+              <div class="multiview-slot-overlay" id="mvOverlay0">Click a channel to load</div>
+              <div class="multiview-slot-actions">
+                   <button class="mv-action" data-action="playpause" data-slot="0" title="Play/Pause">⏯</button>
+                   <button class="mv-action" data-action="clear" data-slot="0" title="Clear slot">✖</button>
+                   <button class="mv-action" data-action="reload" data-slot="0" title="Reload slot">↻</button>
+                   <button class="mv-action" data-action="swap" data-slot="0" title="Swap slot">⇄</button>
+                   <button class="mv-action" data-action="fullscreen" data-slot="0" title="Fullscreen slot">⛶</button>
+              </div>
+              <button class="multiview-audio-btn" id="mvAudioBtn0" title="Toggle audio for Slot 1" aria-label="Toggle audio for Slot 1">🔇</button>
+              <div class="multiview-slot-label" id="mvLabel0">Slot 1</div>
+            </div>
+            <div class="multiview-slot" data-slot-index="1">
+              <video id="mvVideo1" autoplay muted playsinline webkit-playsinline></video>
+              <div class="multiview-slot-overlay" id="mvOverlay1">Click a channel to load</div>
+              <div class="multiview-slot-actions">
+                   <button class="mv-action" data-action="playpause" data-slot="1" title="Play/Pause">⏯</button>
+                   <button class="mv-action" data-action="clear" data-slot="1" title="Clear slot">✖</button>
+                   <button class="mv-action" data-action="reload" data-slot="1" title="Reload slot">↻</button>
+                   <button class="mv-action" data-action="swap" data-slot="1" title="Swap slot">⇄</button>
+                   <button class="mv-action" data-action="fullscreen" data-slot="1" title="Fullscreen slot">⛶</button>
+              </div>
+              <button class="multiview-audio-btn" id="mvAudioBtn1" title="Toggle audio for Slot 2" aria-label="Toggle audio for Slot 2">🔇</button>
+              <div class="multiview-slot-label" id="mvLabel1">Slot 2</div>
+            </div>
+            <div class="multiview-slot" data-slot-index="2">
+              <video id="mvVideo2" autoplay muted playsinline webkit-playsinline></video>
+              <div class="multiview-slot-overlay" id="mvOverlay2">Click a channel to load</div>
+              <div class="multiview-slot-actions">
+                   <button class="mv-action" data-action="playpause" data-slot="2" title="Play/Pause">⏯</button>
+                   <button class="mv-action" data-action="clear" data-slot="2" title="Clear slot">✖</button>
+                   <button class="mv-action" data-action="reload" data-slot="2" title="Reload slot">↻</button>
+                   <button class="mv-action" data-action="swap" data-slot="2" title="Swap slot">⇄</button>
+                   <button class="mv-action" data-action="fullscreen" data-slot="2" title="Fullscreen slot">⛶</button>
+              </div>
+              <button class="multiview-audio-btn" id="mvAudioBtn2" title="Toggle audio for Slot 3" aria-label="Toggle audio for Slot 3">🔇</button>
+              <div class="multiview-slot-label" id="mvLabel2">Slot 3</div>
+            </div>
+            <div class="multiview-slot" data-slot-index="3">
+              <video id="mvVideo3" autoplay muted playsinline webkit-playsinline></video>
+              <div class="multiview-slot-overlay" id="mvOverlay3">Click a channel to load</div>
+              <div class="multiview-slot-actions">
+                   <button class="mv-action" data-action="playpause" data-slot="3" title="Play/Pause">⏯</button>
+                   <button class="mv-action" data-action="clear" data-slot="3" title="Clear slot">✖</button>
+                   <button class="mv-action" data-action="reload" data-slot="3" title="Reload slot">↻</button>
+                   <button class="mv-action" data-action="swap" data-slot="3" title="Swap slot">⇄</button>
+                   <button class="mv-action" data-action="fullscreen" data-slot="3" title="Fullscreen slot">⛶</button>
+              </div>
+              <button class="multiview-audio-btn" id="mvAudioBtn3" title="Toggle audio for Slot 4" aria-label="Toggle audio for Slot 4">🔇</button>
+              <div class="multiview-slot-label" id="mvLabel3">Slot 4</div>
+            </div>
+          </div>
+        </div>
+        <!-- Right Sidebar for EPG -->
+        <div class="right-sidebar" id="rightSidebar">
+          <div class="right-sidebar-header">
+            <h3>Program Guide</h3>
+          </div>
+          <div class="right-sidebar-content" id="epgSidebarContent">
+            <p class="empty-state">EPG will appear here when available</p>
+          </div>
+        </div>
+      </div>
+      <!-- Loading Indicator -->
+      <div class="loading" id="loading" style="display: none;">
+        <div class="loading-content">
+          <div class="spinner"></div>
+          <p>Loading stream...</p>
+          <button class="btn-cancel" id="cancelLoading">Cancel</button>
+        </div>
+      </div>
+      <!-- Error Toast -->
+      <div class="toast" id="toast"></div>
+      <!-- Settings Modal -->
+      <div class="modal" id="settingsModal" aria-hidden="true">
+        <div class="modal-backdrop" data-close-modal="settingsModal"></div>
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+          <div class="modal-header">
+            <h3 id="settingsTitle">Settings</h3>
+            <button class="btn-icon" data-close-modal="settingsModal" title="Close">✖</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-row">
+              <label for="profileSelect">Playback profile</label>
+              <select id="profileSelect">
+                <option value="default">Default (current)</option>
+                <option value="lowlatency">Low latency</option>
+                <option value="stable">Stable buffering</option>
+              </select>
+              <div class="help-text">Default uses your current MPEG-TS settings. Profiles apply only when selected.</div>
+            </div>
+            <div class="form-row">
+              <label for="accentColor">Accent color</label>
+              <input id="accentColor" type="color" value="#2196F3" />
+            </div>
+            <div class="form-row">
+              <label class="switch">
+                <input type="checkbox" id="audioFollowsSlot" />
+                <span class="switch-slider"></span>
+                <span class="switch-label">Multiview: audio follows selected slot</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Edit Channel Modal -->
+      <div class="modal" id="editChannelModal" aria-hidden="true">
+        <div class="modal-backdrop" data-close-modal="editChannelModal"></div>
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="editChannelTitle">
+          <div class="modal-header">
+            <h3 id="editChannelTitle">Edit Channel</h3>
+            <button class="btn-icon" data-close-modal="editChannelModal" title="Close">✖</button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="editChannelId" />
+            <div class="form-row">
+              <label for="editChannelName">Custom name</label>
+              <input id="editChannelName" type="text" placeholder="(optional)" />
+            </div>
+            <div class="form-row">
+              <label for="editChannelGroup">Custom group/category</label>
+              <input id="editChannelGroup" type="text" placeholder="(optional)" />
+            </div>
+            <div class="form-row">
+              <label for="editChannelLogo">Custom logo URL</label>
+              <input id="editChannelLogo" type="text" placeholder="(optional) https://..." />
+            </div>
+            <div class="form-row">
+              <label for="editChannelProfile">Playback profile override</label>
+              <select id="editChannelProfile">
+                <option value="">Use global profile</option>
+                <option value="default">Default (current)</option>
+                <option value="lowlatency">Low latency</option>
+                <option value="stable">Stable buffering</option>
+              </select>
+            </div>
+            <div class="modal-actions">
+              <button class="btn-secondary" id="resetChannelEdits">Reset</button>
+              <button class="btn-primary" id="saveChannelEdits">Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Party Modal -->
+      <div class="modal" id="partyModal" aria-hidden="true">
+        <div class="modal-backdrop" id="partyModalBackdrop"></div>
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="partyTitle" style="width: 90%; max-width: 500px;">
+          <div class="modal-header">
+            <h3 id="partyTitle">Group Watching</h3>
+            <button class="btn-icon" id="closePartyModalBtn" title="Close">✖</button>
+          </div>
+          <div class="modal-body">
+            <div id="partyNotJoined">
+              <div class="form-row">
+                <label for="partyUsername">Your name:</label>
+                <input id="partyUsername" type="text" placeholder="Enter your name" value="Friend" maxlength="50" />
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0;">
+                <button class="btn-primary" id="createPartyBtn">Create Party</button>
+                <button class="btn-secondary" id="joinPartyBtn">Join Party</button>
+              </div>
+              <div id="joinPartyForm" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px solid #444;">
+                <div class="form-row">
+                  <label for="partyCodeInput">Party Code:</label>
+                  <input id="partyCodeInput" type="text" placeholder="e.g., ABC123" maxlength="6" style="text-transform: uppercase;" />
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                  <button class="btn-secondary" id="cancelJoinPartyBtn">Cancel</button>
+                  <button class="btn-primary" id="confirmJoinPartyBtn">Join</button>
+                </div>
+              </div>
+            </div>
+            <div id="partyJoined" style="display: none;">
+              <div class="form-row">
+                <label>Party Code:</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                  <input id="partyCodeDisplay" type="text" readonly style="flex: 1; background: #333; padding: 8px; border-radius: 4px; color: #fff; font-weight: bold; font-size: 18px; text-align: center;" />
+                  <button class="btn-secondary" id="copyPartyCodeBtn" style="padding: 8px 12px;">Copy</button>
+                </div>
+              </div>
+              <div class="form-row">
+                <label>Members (<span id="memberCount">1</span>):</label>
+                <div id="partyMembersList" style="background: #333; padding: 10px; border-radius: 4px; max-height: 150px; overflow-y: auto;">
+                  <div id="noMembers" style="color: #999; text-align: center;">No members yet</div>
+                </div>
+              </div>
+              <div style="margin-top: 15px;">
+                <button class="btn-secondary" id="leavePartyBtn" style="width: 100%;">Leave Party</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Chat Widget -->
+      <div id="chatWidget" class="chat-widget" style="display: none;">
+        <div class="chat-header" id="chatDragHandle" style="cursor: grab; user-select: none;">
+          <div class="chat-title">Group Chat</div>
+          <button class="btn-icon" id="closeChatBtn" title="Close Chat">✖</button>
+        </div>
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-input-container">
+          <input id="chatMessageInput" type="text" placeholder="Type a message..." class="chat-input" maxlength="500" />
+          <button id="chatSendBtn" class="btn-primary" style="padding: 8px 12px; height: auto;">Send</button>
+        </div>
+      </div>
+    </div>
+    <script src="m3u-parser.js"></script>
+    <script src="epg-parser.js"></script>
+    <script src="stream-validator.js"></script>
+    <script src="app.js"></script>
+    <script src="sidebar-toggle.js"></script>
+  </body>
+</html>

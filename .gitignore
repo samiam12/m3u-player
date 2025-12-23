@@ -1,0 +1,23 @@
+# Node / Electron
+node_modules/
+dist/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# OS
+.DS_Store
+
+# Media / cache
+*.ts
+*.mp4
+*.mkv
+*.avi
+*.m3u
+*.m3u8
+cache/
+downloads/
