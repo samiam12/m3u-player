@@ -21,6 +21,12 @@ from pathlib import Path
 # Use PORT from environment (Render) or default to 8002
 PORT = int(os.environ.get('PORT', 8002))
 
+# Setup ffmpeg path for Render environment
+home_dir = os.path.expanduser('~')
+ffmpeg_path = os.path.join(home_dir, '.local', 'bin', 'ffmpeg')
+if os.path.exists(ffmpeg_path):
+    os.environ['PATH'] = f"{os.path.dirname(ffmpeg_path)}:{os.environ.get('PATH', '')}"
+
 # In-memory party and chat storage
 PARTIES = {}  # {party_code: {"host": str, "members": [dict], "channel": str, "playing": bool, "timestamp": float}}
 MESSAGES = {}  # {party_code: [{"username": str, "text": str, "timestamp": float}]}
