@@ -452,6 +452,8 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             str(filepath)
                         ]
                         
+                        print(f"[RECORDING] ffmpeg command: {' '.join(cmd)}")
+                        
                         process = subprocess.Popen(
                             cmd,
                             stdout=subprocess.PIPE,
@@ -465,7 +467,15 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         }
                         
                         # Wait for process to complete
-                        process.wait()
+                        stdout, stderr = process.wait(), process.stderr.read()
+                        print(f"[RECORDING] Process completed: {filename}")
+                        print(f"[RECORDING] Return code: {process.returncode}")
+                        print(f"[RECORDING] stderr: {stderr.decode() if stderr else 'none'}")
+                        
+                        # Check if ffmpeg succeeded
+                        if process.returncode != 0:
+                            print(f"[RECORDING] ffmpeg failed with return code {process.returncode}")
+
                         
                         # Store recording info
                         if filepath.exists():
@@ -478,6 +488,9 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                                 'timestamp': timestamp
                             }
                             print(f"[RECORDING] Complete: {filename} ({size} bytes, {duration}s)")
+                        else:
+                            print(f"[RECORDING] File not created: {filepath}")
+
                         
                         # Cleanup
                         if filename in ACTIVE_RECORDINGS:

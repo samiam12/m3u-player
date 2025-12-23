@@ -2434,7 +2434,17 @@ ${url}
             })
             .then(data => {
                 console.log('[RECORD] Modal list response:', data);
+                console.log('[RECORD] Response type:', typeof data);
+                console.log('[RECORD] recordings property:', data.recordings);
+                console.log('[RECORD] recordings is array:', Array.isArray(data.recordings));
+                if (data.recordings) {
+                    console.log('[RECORD] recordings length:', data.recordings.length);
+                    data.recordings.forEach((rec, i) => {
+                        console.log(`[RECORD] Recording ${i}:`, rec);
+                    });
+                }
                 this.recordings = data.recordings || [];
+                console.log('[RECORD] After assignment, this.recordings.length:', this.recordings.length);
                 this._displayRecordingsModal();
             })
             .catch(err => {
