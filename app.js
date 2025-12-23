@@ -2456,10 +2456,11 @@ ${url}
     _displayRecordingsModal() {
         const modal = document.createElement('div');
         modal.id = 'recordingsModal';
-        modal.className = 'modal';
+        modal.className = 'modal open';  // Add 'open' class to make it visible
         
         let recordingsHTML = `
-            <div class="modal-content">
+            <div class="modal-backdrop"></div>
+            <div class="modal-card">
                 <div class="modal-header">
                     <h2>📹 Recordings</h2>
                     <button class="modal-close" onclick="document.getElementById('recordingsModal').remove()">✕</button>
@@ -2472,7 +2473,7 @@ ${url}
         } else {
             recordingsHTML += '<div class="recordings-list">';
             this.recordings.forEach(rec => {
-                const date = new Date(rec.timestamp);
+                const date = new Date(rec.timestamp * 1000);
                 const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
                 const sizeStr = (rec.size / (1024*1024)).toFixed(2) + ' MB';
                 const durationStr = this._formatDuration(rec.duration);

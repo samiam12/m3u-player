@@ -16,6 +16,7 @@ import string
 import random
 import subprocess
 import threading
+import shutil
 from pathlib import Path
 
 # Use PORT from environment (Render) or default to 8002
@@ -24,8 +25,32 @@ PORT = int(os.environ.get('PORT', 8002))
 # Setup ffmpeg path for Render environment
 home_dir = os.path.expanduser('~')
 ffmpeg_path = os.path.join(home_dir, '.local', 'bin', 'ffmpeg')
-if os.path.exists(ffmpeg_path):
-    os.environ['PATH'] = f"{os.path.dirname(ffmpeg_path)}:{os.environ.get('PATH', '')}"
+
+# Try multiple locations for ffmpeg
+ffmpeg_locations = [
+    ffmpeg_path,  # Render build location
+    '/usr/bin/ffmpeg',  # Linux standard
+    '/usr/local/bin/ffmpeg',  # Homebrew on Mac
+    shutil.which('ffmpeg')  # System PATH
+]
+
+# Find the first available ffmpeg
+actual_ffmpeg_path = None
+for path in ffmpeg_locations:
+    if path and os.path.exists(path):
+        actual_ffmpeg_path = path
+        break
+
+if actual_ffmpeg_path:
+    os.environ['PATH'] = f"{os.path.dirname(actual_ffmpeg_path)}:{os.environ.get('PATH', '')}"
+    ffmpeg_cmd = actual_ffmpeg_path
+else:
+    ffmpeg_cmd = 'ffmpeg'  # Hope it's in PATH
+
+print("[SERVER] Starting M3U Player Server")
+print(f"[SERVER] ffmpeg command: {ffmpeg_cmd}")
+print(f"[SERVER] Recordings directory: {RECORDINGS_DIR.absolute()}")
+print(f"[SERVER] PORT: {PORT}")
 
 # In-memory party and chat storage
 PARTIES = {}  # {party_code: {"host": str, "members": [dict], "channel": str, "playing": bool, "timestamp": float}}
@@ -37,11 +62,6 @@ RECORDINGS_DIR = Path('recordings')
 RECORDINGS_DIR.mkdir(exist_ok=True)
 ACTIVE_RECORDINGS = {}  # {filename: {"process": Process, "channel": str, "url": str, "startTime": timestamp}}
 RECORDED_FILES = {}  # {filename: {"channel": str, "size": bytes, "duration": seconds, "timestamp": float}}
-
-print("[SERVER] Starting M3U Player Server")
-print(f"[SERVER] ffmpeg path check: {ffmpeg_path} exists: {os.path.exists(ffmpeg_path)}")
-print(f"[SERVER] Recordings directory: {RECORDINGS_DIR.absolute()}")
-print(f"[SERVER] PORT: {PORT}")
 
 def generate_party_code():
     """Generate a random 6-character party code"""
@@ -445,10 +465,12 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         print(f"[RECORDING] Starting: {filename} from {channel}")
                         # Use ffmpeg to record the stream
                         cmd = [
-                            'ffmpeg',
+                            ffmpeg_cmd,
+                            '-user_agent', 'Mozilla/5.0',  # Some streams require a user agent
                             '-i', url,
                             '-c', 'copy',  # Copy codecs without re-encoding
                             '-t', '36000',  # Max 10 hours
+                            '-loglevel', 'error',  # Only show errors
                             str(filepath)
                         ]
                         

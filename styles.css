@@ -2612,3 +2612,61 @@ body.sidebar-collapsed::before:hover {
         box-shadow: 0 0 0 6px rgba(244, 67, 54, 0);
     }
 }
+
+/* Recordings modal styling */
+.recordings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.recording-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    transition: background 0.3s ease;
+}
+
+.recording-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.recording-info {
+    flex: 1;
+}
+
+.recording-title {
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.recording-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.recording-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: 12px;
+}
+
+.recording-actions button {
+    padding: 8px 12px;
+    font-size: 0.9rem;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 32px 16px;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
