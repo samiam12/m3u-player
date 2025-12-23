@@ -468,11 +468,12 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         # Use ffmpeg to record the stream
                         cmd = [
                             ffmpeg_cmd,
-                            '-user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                            '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                            '-timeout', '5',
                             '-i', url,
                             '-c', 'copy',  # Copy codecs without re-encoding
                             '-t', '36000',  # Max 10 hours
-                            '-loglevel', 'info',  # Info level logging
+                            '-loglevel', 'error',  # Show only errors
                             str(filepath)
                         ]
                         
@@ -497,7 +498,9 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         print(f"[RECORDING] Process completed: {filename}", flush=True)
                         print(f"[RECORDING] Return code: {process.returncode}", flush=True)
                         if stderr_data:
-                            print(f"[RECORDING] stderr: {stderr_data[:500]}", flush=True)  # First 500 chars
+                            # Print all stderr, not just first 500 chars
+                            print(f"[RECORDING] stderr ({len(stderr_data)} bytes):", flush=True)
+                            print(stderr_data, flush=True)
                         
                         # Check if ffmpeg succeeded
                         if process.returncode != 0:
