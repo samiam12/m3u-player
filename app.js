@@ -1084,10 +1084,10 @@ class M3UPlayerApp {
             type: 'mpegts',
             isLive: true,
             url: url,
-            // Optimize for low buffering
+            // Optimize for better buffering
             enableWorker: true,
-            enableStashBuffer: false, // Disable stash buffer to reduce latency
-            stashInitialSize: 64, // Reduced from 128 for faster playback
+            enableStashBuffer: true, // Enable stash buffer for better streaming
+            stashInitialSize: 512, // Large cache buffer for smooth playback
             autoCleanupSourceBuffer: true,
             accurateSeek: false,
             seekType: 'range', // Use range requests for better performance
