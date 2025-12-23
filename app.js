@@ -2367,6 +2367,11 @@ ${url}
     stopRecording() {
         if (!this.isRecording) return;
         
+        // Calculate duration BEFORE clearing the start time
+        const duration = Math.round((new Date() - this.recordingStartTime) / 1000) || 0;
+        const minutes = Math.floor(duration / 60);
+        const seconds = duration % 60;
+        
         // Stop immediately on UI
         this.isRecording = false;
         this.recordingStartTime = null;
@@ -2376,10 +2381,6 @@ ${url}
             recordBtn.classList.remove('active');
             recordBtn.style.backgroundColor = '';
         }
-        
-        const duration = Math.round((new Date() - this.recordingStartTime) / 1000) || 0;
-        const minutes = Math.floor(duration / 60);
-        const seconds = duration % 60;
         
         this.showToast(`Recording stopped (${minutes}m ${seconds}s)`, 'success');
         
@@ -2425,6 +2426,10 @@ ${url}
     }
 
     showRecordingsModal() {
+        // Remove any existing recordings modal first
+        const existingModal = document.getElementById('recordingsModal');
+        if (existingModal) existingModal.remove();
+        
         console.log('[RECORD] Opening recordings modal');
         // Load recordings first
         fetch('/recording/list')
@@ -2512,6 +2517,10 @@ ${url}
     }
 
     playRecording(filename) {
+        // Remove any existing player modal first
+        const existingPlayerModal = document.getElementById('recordingPlayerModal');
+        if (existingPlayerModal) existingPlayerModal.remove();
+        
         const recordingUrl = `/recording/play?file=${encodeURIComponent(filename)}`;
         
         // Create a new modal for playing the recording
@@ -2582,6 +2591,10 @@ ${url}
     }
 
     showScheduleRecordingModal() {
+        // Remove any existing schedule modal first
+        const existingModal = document.getElementById('scheduleModal');
+        if (existingModal) existingModal.remove();
+        
         const modal = document.createElement('div');
         modal.id = 'scheduleModal';
         modal.className = 'modal open';
