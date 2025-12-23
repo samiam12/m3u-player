@@ -476,11 +476,13 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         ]
                         
                         print(f"[RECORDING] ffmpeg command: {' '.join(cmd)}")
+                        print(f"[RECORDING] URL: {url}")
                         
                         process = subprocess.Popen(
                             cmd,
                             stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE
+                            stderr=subprocess.PIPE,
+                            text=True
                         )
                         ACTIVE_RECORDINGS[filename] = {
                             'process': process,
@@ -489,11 +491,12 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             'startTime': timestamp
                         }
                         
-                        # Wait for process to complete
-                        stdout, stderr = process.wait(), process.stderr.read()
+                        # Wait for process to complete and capture output
+                        stdout_data, stderr_data = process.communicate()
                         print(f"[RECORDING] Process completed: {filename}")
                         print(f"[RECORDING] Return code: {process.returncode}")
-                        print(f"[RECORDING] stderr: {stderr.decode() if stderr else 'none'}")
+                        if stderr_data:
+                            print(f"[RECORDING] stderr: {stderr_data[:500]}")  # First 500 chars
                         
                         # Check if ffmpeg succeeded
                         if process.returncode != 0:
@@ -520,6 +523,10 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             del ACTIVE_RECORDINGS[filename]
                     except Exception as e:
                         print(f"[RECORDING] Error: {filename} - {str(e)}")
+                        import traceback
+                        traceback.print_exc()
+                        if filename in ACTIVE_RECORDINGS:
+                            del ACTIVE_RECORDINGS[filename]
                         if filename in ACTIVE_RECORDINGS:
                             del ACTIVE_RECORDINGS[filename]
                 
