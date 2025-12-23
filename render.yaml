@@ -1,10 +1,9 @@
 services:
   - type: web
     name: m3u-player
-    runtime: python
-    runtimeVersion: 3.11
-    buildCommand: bash build.sh
-    startCommand: python3 server.py
+    runtime: docker
+    region: oregon
+    startCommand: python server.py
     envVars:
       - key: M3U_PLAYER_NO_BROWSER
         value: "1"
