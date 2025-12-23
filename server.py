@@ -18,13 +18,14 @@ import random
 import subprocess
 import threading
 import shutil
+import requests
 from pathlib import Path
 
 # Use PORT from environment (Render) or default to 8002
 PORT = int(os.environ.get('PORT', 8002))
 
 print("[SERVER] Starting M3U Player Server")
-print(f"[SERVER] Using Streamlink for recording")
+print(f"[SERVER] Using direct HTTP streaming for recording")
 print(f"[SERVER] PORT: {PORT}")
 
 # In-memory party and chat storage
@@ -440,44 +441,42 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 def record_stream():
                     try:
                         print(f"[RECORDING] Starting: {filename} from {channel}", flush=True)
-                        # Use streamlink to record the stream
-                        cmd = [
-                            'streamlink',
-                            '--hls-segment-timeout', '30',
-                            '--retry-stream', '3',
-                            '--http-header', 'User-Agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                            url,
-                            'best',  # Best quality
-                            '-o', str(filepath)
-                        ]
-                        
-                        print(f"[RECORDING] streamlink command: {' '.join(cmd)}", flush=True)
                         print(f"[RECORDING] URL: {url}", flush=True)
                         
-                        process = subprocess.Popen(
-                            cmd,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            text=True
-                        )
-                        ACTIVE_RECORDINGS[filename] = {
-                            'process': process,
-                            'channel': channel,
-                            'url': url,
-                            'startTime': timestamp
-                        }
+                        # Use requests to download the stream directly
+                        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
                         
-                        # Wait for process to complete and capture output
-                        stdout_data, stderr_data = process.communicate()
-                        print(f"[RECORDING] Process completed: {filename}", flush=True)
-                        print(f"[RECORDING] Return code: {process.returncode}", flush=True)
-                        if stderr_data:
-                            print(f"[RECORDING] stderr ({len(stderr_data)} bytes):", flush=True)
-                            print(stderr_data, flush=True)
-                        
-                        # Check if streamlink succeeded
-                        if process.returncode != 0:
-                            print(f"[RECORDING] streamlink failed with return code {process.returncode}", flush=True)
+                        try:
+                            response = requests.get(url, headers=headers, stream=True, timeout=30)
+                            response.raise_for_status()
+                            
+                            print(f"[RECORDING] Connected to stream, status: {response.status_code}", flush=True)
+                            print(f"[RECORDING] Content-Type: {response.headers.get('content-type', 'unknown')}", flush=True)
+                            
+                            # Write stream to file
+                            bytes_written = 0
+                            chunk_size = 8192
+                            max_duration = 36000  # 10 hours
+                            start_time = time.time()
+                            
+                            with open(filepath, 'wb') as f:
+                                for chunk in response.iter_content(chunk_size=chunk_size):
+                                    if chunk:
+                                        f.write(chunk)
+                                        bytes_written += len(chunk)
+                                    
+                                    # Check duration limit
+                                    elapsed = time.time() - start_time
+                                    if elapsed >= max_duration:
+                                        print(f"[RECORDING] Max duration reached ({elapsed}s)", flush=True)
+                                        break
+                            
+                            print(f"[RECORDING] Download complete: {bytes_written} bytes", flush=True)
+                            
+                        except requests.Timeout:
+                            print(f"[RECORDING] Request timeout while connecting to stream", flush=True)
+                        except requests.RequestException as e:
+                            print(f"[RECORDING] Request error: {str(e)}", flush=True)
 
                         
                         # Store recording info
