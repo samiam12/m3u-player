@@ -7,6 +7,7 @@ Run this script to serve the player locally and avoid CORS issues
 import http.server
 import socketserver
 import os
+import sys
 import webbrowser
 import urllib.request
 import urllib.parse
@@ -439,13 +440,13 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
     def handle_recording_start(self):
         """Start recording a stream"""
-        print("[RECORDING_START] Handler called")
+        print("[RECORDING_START] Handler called", flush=True)
         try:
             content_length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(content_length)
             data = json.loads(body.decode())
             
-            print(f"[RECORDING_START] Data received: channel={data.get('channel')}, url={data.get('url')}")
+            print(f"[RECORDING_START] Data received: channel={data.get('channel')}, url={data.get('url')}", flush=True)
             
             channel = data.get('channel', 'Unknown')
             url = data.get('url', '')
@@ -463,7 +464,7 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # Start recording in background thread
                 def record_stream():
                     try:
-                        print(f"[RECORDING] Starting: {filename} from {channel}")
+                        print(f"[RECORDING] Starting: {filename} from {channel}", flush=True)
                         # Use ffmpeg to record the stream
                         cmd = [
                             ffmpeg_cmd,
@@ -477,8 +478,8 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             str(filepath)
                         ]
                         
-                        print(f"[RECORDING] ffmpeg command: {' '.join(cmd)}")
-                        print(f"[RECORDING] URL: {url}")
+                        print(f"[RECORDING] ffmpeg command: {' '.join(cmd)}", flush=True)
+                        print(f"[RECORDING] URL: {url}", flush=True)
                         
                         process = subprocess.Popen(
                             cmd,
@@ -495,14 +496,14 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         
                         # Wait for process to complete and capture output
                         stdout_data, stderr_data = process.communicate()
-                        print(f"[RECORDING] Process completed: {filename}")
-                        print(f"[RECORDING] Return code: {process.returncode}")
+                        print(f"[RECORDING] Process completed: {filename}", flush=True)
+                        print(f"[RECORDING] Return code: {process.returncode}", flush=True)
                         if stderr_data:
-                            print(f"[RECORDING] stderr: {stderr_data[:500]}")  # First 500 chars
+                            print(f"[RECORDING] stderr: {stderr_data[:500]}", flush=True)  # First 500 chars
                         
                         # Check if ffmpeg succeeded
                         if process.returncode != 0:
-                            print(f"[RECORDING] ffmpeg failed with return code {process.returncode}")
+                            print(f"[RECORDING] ffmpeg failed with return code {process.returncode}", flush=True)
 
                         
                         # Store recording info
@@ -515,16 +516,16 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                                 'duration': duration,
                                 'timestamp': timestamp
                             }
-                            print(f"[RECORDING] Complete: {filename} ({size} bytes, {duration}s)")
+                            print(f"[RECORDING] Complete: {filename} ({size} bytes, {duration}s)", flush=True)
                         else:
-                            print(f"[RECORDING] File not created: {filepath}")
+                            print(f"[RECORDING] File not created: {filepath}", flush=True)
 
                         
                         # Cleanup
                         if filename in ACTIVE_RECORDINGS:
                             del ACTIVE_RECORDINGS[filename]
                     except Exception as e:
-                        print(f"[RECORDING] Error: {filename} - {str(e)}")
+                        print(f"[RECORDING] Error: {filename} - {str(e)}", flush=True)
                         import traceback
                         traceback.print_exc()
                         if filename in ACTIVE_RECORDINGS:
