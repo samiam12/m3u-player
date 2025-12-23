@@ -1082,7 +1082,7 @@ class M3UPlayerApp {
             // Optimize for low buffering
             enableWorker: true,
             enableStashBuffer: false, // Disable stash buffer to reduce latency
-            stashInitialSize: 128, // Smaller initial buffer
+            stashInitialSize: 64, // Reduced from 128 for faster playback
             autoCleanupSourceBuffer: true,
             accurateSeek: false,
             seekType: 'range', // Use range requests for better performance
@@ -1090,8 +1090,8 @@ class M3UPlayerApp {
             seekParamEnd: 'bend',
             rangeLoadZeroStart: false,
             liveSyncLatencyChasing: true, // Chase latency for live streams
-            liveSyncLatency: 1.5, // Lower latency target
-            liveMaxLatencyDuration: 3, // Max latency before skipping
+            liveSyncLatency: 1, // Reduced from 1.5 for lower latency
+            liveMaxLatencyDuration: 2, // Reduced from 3
             liveDurationInfinity: true,
             liveBackBufferLength: 0 // No back buffer for live streams
         };
@@ -3150,7 +3150,7 @@ ${url}
         let lastSeenChannel = this.currentChannel?.id || null;
         let lastSeenTime = 0;
         
-        // Sync every 100ms for super tight synchronization (NO DELAYS!)
+        // Sync every 100ms for tight synchronization
         this.partySyncLoop = setInterval(async () => {
             if (!this.partyCode) {
                 clearInterval(this.partySyncLoop);
@@ -3220,7 +3220,7 @@ ${url}
             if (Date.now() % 1000 < 200) {
                 await this.updatePartyMembersList();
             }
-        }, 25);
+        }, 100);
         
         // Start chat polling
         this.startChatPollLoop();
