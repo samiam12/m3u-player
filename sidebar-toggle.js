@@ -1,28 +1,45 @@
-// Sidebar toggle enhancement - adds re-open button via CSS pseudo-element click
+// Sidebar toggle enhancement - handles menu button clicks
 (function() {
+    // Check if we're using the new Tivimate UI
+    const menuBtn = document.getElementById('menuBtn');
+    const sidebarLeft = document.getElementById('sidebarLeft');
+    const sidebarClose = document.getElementById('sidebarClose');
+    
+    // If using new Tivimate UI, setup menu toggle
+    if (menuBtn && sidebarLeft && sidebarClose) {
+        menuBtn.addEventListener('click', function() {
+            sidebarLeft.classList.toggle('active');
+        });
+        
+        sidebarClose.addEventListener('click', function() {
+            sidebarLeft.classList.remove('active');
+        });
+        
+        return; // Exit - using new UI
+    }
+    
+    // Fallback for old UI
     const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+    
     const body = document.body;
     
-    // When sidebar is collapsed, clicking the pseudo-element ::before should re-open it
-    // Since we can't directly click pseudo-elements, we'll add a click listener to the body
-    // and check if click is on the left edge where the button appears
-    
     body.addEventListener('click', function(e) {
-        // Check if sidebar is collapsed and click is near the left edge (hamburger button area)
         if (body.classList.contains('sidebar-collapsed') && e.clientX < 70 && e.clientY < 70) {
             sidebar.classList.remove('collapsed');
             body.classList.remove('sidebar-collapsed');
         }
     });
     
-    // Listen for sidebar collapse/expand to update body class
     const observer = new MutationObserver(function() {
-        if (sidebar.classList.contains('collapsed')) {
+        if (sidebar && sidebar.classList.contains('collapsed')) {
             body.classList.add('sidebar-collapsed');
         } else {
             body.classList.remove('sidebar-collapsed');
         }
     });
     
-    observer.observe(sidebar, { attributes: true, attributeFilter: ['class'] });
+    if (sidebar) {
+        observer.observe(sidebar, { attributes: true, attributeFilter: ['class'] });
+    }
 })();

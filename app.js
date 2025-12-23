@@ -75,6 +75,13 @@ class M3UPlayerApp {
         this.sentMessageIds = new Set(); // Track sent messages to avoid duplicates
         this.isSendingMessage = false; // Prevent double sends
 
+        // Player controls state
+        this.volume = 100;
+        this.currentAspectRatio = '16:9';
+        this.lastWatchedChannelId = null; // For auto-resume
+        this.bufferStatus = 'ready'; // ready, buffering, error
+        this.showFullscreenChannelSwitcher = false;
+
         this.initializeElements();
         this.attachEventListeners();
         this.loadPersistedState();
@@ -134,6 +141,23 @@ class M3UPlayerApp {
         // Now playing
         this.nowPlayingTitle = document.getElementById('nowPlayingTitle');
         this.nowPlayingSub = document.getElementById('nowPlayingSub');
+
+        // Player controls
+        this.playerControls = document.getElementById('playerControls');
+        this.volumeBtn = document.getElementById('volumeBtn');
+        this.volumeSlider = document.getElementById('volumeSlider');
+        this.volumeValue = document.getElementById('volumeValue');
+        this.playPauseBtn = document.getElementById('playPauseBtn');
+        this.fullscreenBtn = document.getElementById('fullscreenBtn');
+        this.bufferIndicator = document.getElementById('bufferIndicator');
+        this.bufferFill = this.bufferIndicator?.querySelector('.buffer-fill');
+        this.bufferText = document.getElementById('bufferText');
+        this.aspectButtons = document.querySelectorAll('.aspect-btn');
+        
+        // Fullscreen channel switcher
+        this.fullscreenChannelSwitcher = document.getElementById('fullscreenChannelSwitcher');
+        this.channelSwitcherCarousel = document.getElementById('channelSwitcherCarousel');
+        this.closeChannelSwitcherBtn = document.getElementById('closeChannelSwitcher');
 
         // Modals
         this.settingsModal = document.getElementById('settingsModal');
@@ -300,6 +324,38 @@ class M3UPlayerApp {
                 this.settings.audioFollowsSlot = !!this.audioFollowsSlotToggle.checked;
                 this.savePersistedState();
             });
+        }
+
+        // Player controls
+        if (this.volumeSlider) {
+            this.volumeSlider.addEventListener('input', (e) => {
+                this.volume = parseInt(e.target.value);
+                this.updateVolume();
+            });
+        }
+        if (this.volumeBtn) {
+            this.volumeBtn.addEventListener('click', () => this.toggleMute());
+        }
+        if (this.playPauseBtn) {
+            this.playPauseBtn.addEventListener('click', () => this.togglePlayPause());
+        }
+        if (this.fullscreenBtn) {
+            this.fullscreenBtn.addEventListener('click', () => this.toggleFullscreenWithChannelSwitcher());
+        }
+        
+        // Aspect ratio buttons
+        this.aspectButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const aspect = btn.dataset.aspect;
+                this.setAspectRatio(aspect);
+                this.aspectButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+
+        // Fullscreen channel switcher
+        if (this.closeChannelSwitcherBtn) {
+            this.closeChannelSwitcherBtn.addEventListener('click', () => this.hideChannelSwitcher());
         }
 
         // Edit channel modal actions
@@ -917,6 +973,14 @@ class M3UPlayerApp {
                 this.profileSelect.value = this.settings.profile;
                 this.accentColorInput.value = this.settings.accent;
                 this.audioFollowsSlotToggle.checked = !!this.settings.audioFollowsSlot;
+                // Load defaults for volume and aspect
+                const savedVolume = localStorage.getItem('m3u.volume');
+                if (savedVolume) {
+                    this.volume = parseInt(savedVolume);
+                    this.updateVolume();
+                }
+                const savedAspect = localStorage.getItem('m3u.aspectRatio') || '16:9';
+                this.setAspectRatio(savedAspect);
                 return;
             }
 
@@ -945,6 +1009,18 @@ class M3UPlayerApp {
         if (this.profileSelect) this.profileSelect.value = this.settings.profile || 'default';
         if (this.accentColorInput) this.accentColorInput.value = this.settings.accent || '#2196F3';
         if (this.audioFollowsSlotToggle) this.audioFollowsSlotToggle.checked = !!this.settings.audioFollowsSlot;
+        
+        // Load volume and aspect ratio
+        const savedVolume = localStorage.getItem('m3u.volume');
+        if (savedVolume) {
+            this.volume = parseInt(savedVolume);
+            this.updateVolume();
+        } else {
+            this.updateVolume(); // Initialize with default 100%
+        }
+        
+        const savedAspect = localStorage.getItem('m3u.aspectRatio') || '16:9';
+        this.setAspectRatio(savedAspect);
     }
 
     showWelcomeAnimation() {
@@ -978,7 +1054,10 @@ class M3UPlayerApp {
             return;
         }
 
-        this.loadPlaylist();
+        this.loadPlaylist(() => {
+            // After playlist loads, try to resume last watched channel
+            setTimeout(() => this.resumeLastChannel(), 500);
+        });
         this.hideWelcomeAnimation();
     }
 
@@ -994,6 +1073,8 @@ class M3UPlayerApp {
                     settings: this.settings
                 };
                 localStorage.setItem(this.storageKey, JSON.stringify(payload));
+                localStorage.setItem('m3u.volume', this.volume);
+                localStorage.setItem('m3u.aspectRatio', this.currentAspectRatio);
             } catch (e) {
                 console.warn('Failed to save state:', e);
             }
@@ -1715,6 +1796,7 @@ class M3UPlayerApp {
         }
 
         this.addRecent(channel.id);
+        this.saveLastWatchedChannel();
 
         // Reset cancel flag
         this.isLoadingCancelled = false;
@@ -1726,6 +1808,7 @@ class M3UPlayerApp {
             try { if (this.playerToolbar) this.playerToolbar.style.display = 'flex'; } catch (e) {}
             this.showOverlay();
             this.showLoading(true);
+            this.updateBufferStatus('buffering');
             
             // Stop current playback
             this.stopPlayback();
@@ -1736,6 +1819,7 @@ class M3UPlayerApp {
             // Check if cancelled
             if (this.isLoadingCancelled) {
                 this.showLoading(false);
+                this.updateBufferStatus('error');
                 return;
             }
             
@@ -1751,17 +1835,21 @@ class M3UPlayerApp {
                 if (this.isLoadingCancelled) {
                     this.stopPlayback();
                     this.showLoading(false);
+                    this.updateBufferStatus('error');
                     return;
                 }
                 
                 this.showLoading(false);
+                this.updateBufferStatus('ready');
             } catch (streamError) {
                 // Don't show error if user cancelled
                 if (this.isLoadingCancelled) {
                     this.showLoading(false);
+                    this.updateBufferStatus('error');
                     return;
                 }
                 
+                this.updateBufferStatus('error');
                 // Check validation result
                 const validation = await validationPromise;
                 if (validation && !validation.valid && validation.checked) {
@@ -1781,10 +1869,12 @@ class M3UPlayerApp {
             // Don't show error if user cancelled
             if (this.isLoadingCancelled) {
                 this.showLoading(false);
+                this.updateBufferStatus('error');
                 return;
             }
             
             console.error('Error playing channel:', error);
+            this.updateBufferStatus('error');
             this.showToast(`Error playing channel: ${error.message}`, 'error');
             this.showLoading(false);
             this.showOverlay();
@@ -3313,6 +3403,184 @@ ${url}
             <div class="chat-message-text" style="border-left-color: ${color};">${this.escapeHtml(message.text)}</div>
         `;
         container.appendChild(msgEl);
+    }
+
+    // ============ VOLUME CONTROL ============
+    updateVolume() {
+        if (this.videoPlayer) {
+            this.videoPlayer.volume = this.volume / 100;
+        }
+        if (this.volumeSlider) {
+            this.volumeSlider.value = this.volume;
+        }
+        if (this.volumeValue) {
+            this.volumeValue.textContent = `${this.volume}%`;
+        }
+        
+        // Update button icon
+        if (this.volumeBtn) {
+            if (this.volume === 0) {
+                this.volumeBtn.textContent = '🔇';
+            } else if (this.volume < 50) {
+                this.volumeBtn.textContent = '🔉';
+            } else {
+                this.volumeBtn.textContent = '🔊';
+            }
+        }
+        
+        // Update multiview volumes
+        this.multiviewVideos.forEach(video => {
+            if (video) video.volume = this.volume / 100;
+        });
+    }
+
+    toggleMute() {
+        if (this.volume === 0) {
+            this.volume = 100;
+        } else {
+            this.volume = 0;
+        }
+        this.updateVolume();
+    }
+
+    // ============ PLAYBACK CONTROLS ============
+    togglePlayPause() {
+        if (this.videoPlayer) {
+            if (this.videoPlayer.paused) {
+                this.videoPlayer.play();
+            } else {
+                this.videoPlayer.pause();
+            }
+        }
+    }
+
+    // ============ ASPECT RATIO ============
+    setAspectRatio(aspect) {
+        this.currentAspectRatio = aspect;
+        if (this.videoPlayer) {
+            switch (aspect) {
+                case '16:9':
+                    this.videoPlayer.style.objectFit = 'contain';
+                    this.videoPlayer.style.aspectRatio = '16 / 9';
+                    break;
+                case '4:3':
+                    this.videoPlayer.style.objectFit = 'contain';
+                    this.videoPlayer.style.aspectRatio = '4 / 3';
+                    break;
+                case 'stretch':
+                    this.videoPlayer.style.objectFit = 'fill';
+                    this.videoPlayer.style.aspectRatio = 'unset';
+                    break;
+                case 'fit':
+                    this.videoPlayer.style.objectFit = 'contain';
+                    this.videoPlayer.style.aspectRatio = 'unset';
+                    break;
+            }
+        }
+        
+        // Save preference
+        localStorage.setItem('m3u.aspectRatio', aspect);
+    }
+
+    // ============ BUFFER INDICATOR ============
+    updateBufferStatus(status) {
+        this.bufferStatus = status;
+        if (!this.bufferFill || !this.bufferText) return;
+        
+        switch (status) {
+            case 'buffering':
+                this.bufferFill.style.width = '100%';
+                this.bufferFill.style.background = 'linear-gradient(90deg, #FF9800, #F57C00)';
+                this.bufferText.textContent = 'Buffering...';
+                break;
+            case 'ready':
+                this.bufferFill.style.width = '100%';
+                this.bufferFill.style.background = 'linear-gradient(90deg, #4CAF50, #45a049)';
+                this.bufferText.textContent = 'Ready';
+                break;
+            case 'error':
+                this.bufferFill.style.width = '100%';
+                this.bufferFill.style.background = 'linear-gradient(90deg, #F44336, #E53935)';
+                this.bufferText.textContent = 'Error';
+                break;
+            default:
+                this.bufferFill.style.width = '0%';
+                this.bufferText.textContent = 'Idle';
+        }
+    }
+
+    // ============ AUTO-RESUME ============
+    saveLastWatchedChannel() {
+        if (this.currentChannel) {
+            this.lastWatchedChannelId = this.currentChannel.id;
+            localStorage.setItem('m3u.lastWatchedChannelId', this.currentChannel.id);
+        }
+    }
+
+    resumeLastChannel() {
+        const lastChannelId = localStorage.getItem('m3u.lastWatchedChannelId');
+        if (lastChannelId && this.channels.length > 0) {
+            const channel = this.channels.find(c => c.id === lastChannelId);
+            if (channel) {
+                setTimeout(() => {
+                    this.playChannel(channel, null);
+                }, 500);
+            }
+        }
+    }
+
+    // ============ FULLSCREEN CHANNEL SWITCHER ============
+    toggleFullscreenWithChannelSwitcher() {
+        this.toggleFullscreen();
+        if (document.fullscreenElement) {
+            setTimeout(() => this.showChannelSwitcher(), 500);
+        }
+    }
+
+    showChannelSwitcher() {
+        if (!this.fullscreenChannelSwitcher) return;
+        
+        this.fullscreenChannelSwitcher.style.display = 'block';
+        this.populateChannelSwitcher();
+    }
+
+    hideChannelSwitcher() {
+        if (this.fullscreenChannelSwitcher) {
+            this.fullscreenChannelSwitcher.style.display = 'none';
+        }
+    }
+
+    populateChannelSwitcher() {
+        if (!this.channelSwitcherCarousel) return;
+        
+        this.channelSwitcherCarousel.innerHTML = '';
+        
+        const visibleChannels = this.filteredChannels.length > 0 ? this.filteredChannels : this.channels;
+        
+        visibleChannels.slice(0, 20).forEach(channel => {
+            const item = document.createElement('div');
+            item.className = 'channel-switcher-item';
+            if (this.currentChannel && this.currentChannel.id === channel.id) {
+                item.classList.add('active');
+            }
+            
+            const overrides = this.channelOverrides[channel.id] || {};
+            const displayName = overrides.name || channel.name;
+            const displayGroup = overrides.group || channel.group || 'Uncategorized';
+            
+            item.innerHTML = `
+                <div class="channel-switcher-item-name">${displayName}</div>
+                <div class="channel-switcher-item-group">${displayGroup}</div>
+            `;
+            
+            item.addEventListener('click', () => {
+                this.playChannel(channel, null);
+                item.classList.add('active');
+                this.hideChannelSwitcher();
+            });
+            
+            this.channelSwitcherCarousel.appendChild(item);
+        });
     }
 }
 

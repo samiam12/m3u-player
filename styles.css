@@ -58,8 +58,8 @@ body {
 /* Sidebar */
 .sidebar {
     /* Use flex-basis so collapsing can free space */
-    flex: 0 0 350px;
-    width: 350px;
+    flex: 0 0 280px;
+    width: 280px;
     background: var(--panel);
     backdrop-filter: blur(10px);
     border-right: 1px solid var(--border-color);
@@ -506,7 +506,7 @@ body {
 
 /* Right Sidebar for EPG */
 .right-sidebar {
-    width: 300px;
+    width: 280px;
     background: var(--background-dark);
     border-left: 1px solid var(--border-color);
     display: flex;
@@ -536,9 +536,10 @@ body {
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 20px;
+    padding: 24px;
     min-width: 0;
     position: relative;
+    gap: 12px;
 }
 
 .player-toolbar {
@@ -633,6 +634,196 @@ body.video-playing .player-toolbar .player-toolbar-right { max-width: 40%; }
     min-height: 400px;
     box-shadow: var(--shadow);
     border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Player Controls */
+.player-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    margin-top: 10px;
+    backdrop-filter: blur(8px);
+}
+
+.player-controls-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+}
+
+.player-controls-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.volume-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.volume-slider {
+    width: 100px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.2);
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    cursor: pointer;
+}
+
+.volume-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    cursor: pointer;
+    border: none;
+}
+
+.volume-value {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    min-width: 35px;
+}
+
+.buffer-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    max-width: 200px;
+}
+
+.buffer-bar {
+    flex: 1;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.buffer-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4CAF50, #45a049);
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+.buffer-text {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.aspect-ratio-buttons {
+    display: flex;
+    gap: 4px;
+}
+
+.aspect-btn {
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.aspect-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.aspect-btn.active {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: #000;
+}
+
+/* Fullscreen Channel Switcher */
+.fullscreen-channel-switcher {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(180deg, transparent, rgba(0,0,0,0.9));
+    padding: 40px 20px 20px;
+    z-index: 9999;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+.channel-switcher-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding: 0 10px;
+}
+
+.channel-switcher-header h4 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.channel-switcher-carousel {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 10px 0;
+    scroll-behavior: smooth;
+}
+
+.channel-switcher-item {
+    flex: 0 0 auto;
+    width: 120px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 2px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+
+.channel-switcher-item:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: var(--accent-color);
+}
+
+.channel-switcher-item.active {
+    background: var(--accent-color);
+    color: #000;
+    border-color: var(--accent-color);
+}
+
+.channel-switcher-item-name {
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-bottom: 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.channel-switcher-item-group {
+    font-size: 0.7rem;
+    opacity: 0.7;
 }
 
 #videoPlayer {

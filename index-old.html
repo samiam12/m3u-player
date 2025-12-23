@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M3U Player - Tivimate Style</title>
+    <link rel="stylesheet" href="styles-tivimate.css">
+</head>
+<body>
+    <!-- SIDEBAR -->
+    <div class="sidebar-left" id="sidebarLeft">
+        <div class="sidebar-header">
+            <h2>M3U Player</h2>
+            <button class="close-btn" id="sidebarClose">✕</button>
+        </div>
+
+        <!-- Playlist Section -->
+        <div class="sidebar-section">
+            <label>Load M3U:</label>
+            <div class="input-group">
+                <input type="text" id="m3uFile" placeholder="Enter M3U URL" class="input-field">
+                <button id="loadPlaylistBtn" class="btn btn-primary">Load</button>
+            </div>
+        </div>
+
+        <!-- Groups Section -->
+        <div class="sidebar-section">
+            <h3>Groups</h3>
+            <div class="groups-list" id="groupsList"></div>
+        </div>
+
+        <!-- Favorites Section -->
+        <div class="sidebar-section">
+            <label>
+                <input type="checkbox" id="favoritesOnly">
+                <span>Favorites Only</span>
+            </label>
+        </div>
+
+        <!-- EPG Section -->
+        <div class="sidebar-section">
+            <h3>EPG</h3>
+            <div class="input-group">
+                <input type="text" id="epgFile" placeholder="EPG URL" class="input-field">
+            </div>
+        </div>
+
+        <!-- Footer Buttons -->
+        <div class="sidebar-footer">
+            <button id="settingsBtn" class="btn btn-secondary">⚙ Settings</button>
+            <button id="clearAll" class="btn btn-danger">🗑 Clear All</button>
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-content">
+        <!-- TOP BAR -->
+        <div class="top-bar">
+            <button id="menuBtn" class="menu-btn">☰</button>
+            <input type="text" id="searchInput" placeholder="Search channels..." class="search-input">
+            <span id="channelCount" class="channel-count">0 channels</span>
+            <button id="partyBtn" class="btn btn-secondary">🎭 Party</button>
+        </div>
+
+        <!-- EPG TIMELINE -->
+        <div class="epg-timeline">
+            <div class="timeline-header">Time</div>
+            <div class="timeline-content" id="timelineContent"></div>
+        </div>
+
+        <!-- CHANNELS GUIDE -->
+        <div class="guide-container">
+            <div class="guide-header">
+                <div class="channel-col">Channel</div>
+                <div class="programs-col">Programs</div>
+            </div>
+            <div class="channels-guide" id="channelsGuide"></div>
+        </div>
+    </div>
+
+    <!-- FULLSCREEN PLAYER -->
+    <div class="player-fullscreen" id="playerModal">
+        <div class="player-container">
+            <video id="videoPlayer" class="video-element"></video>
+            
+            <!-- PLAYER INFO BAR -->
+            <div class="program-bar">
+                <div class="program-details">
+                    <div class="channel-badge" id="playerChannelName">Channel</div>
+                    <div class="program-info">
+                        <div class="program-title" id="playerProgramTitle">Program Title</div>
+                        <div class="program-meta">
+                            <span id="playerProgramTime">--:-- — --:--</span>
+                            <span class="buffer-indicator">●</span>
+                        </div>
+                    </div>
+                </div>
+                <button id="closePlayer" class="close-btn">✕</button>
+            </div>
+
+            <!-- PROGRAM DESCRIPTION -->
+            <div class="program-desc" id="playerProgramDesc"></div>
+
+            <!-- PLAYER CONTROLS -->
+            <div class="player-controls">
+                <button id="playPauseBtn" class="control-btn" title="Play/Pause">▶</button>
+                <button id="reloadBtn" class="control-btn" title="Reload">🔄</button>
+                
+                <div class="control-group">
+                    <label>Volume:</label>
+                    <input type="range" id="volumeSlider" min="0" max="100" value="100" class="slider">
+                    <span id="volumeLabel">100%</span>
+                </div>
+
+                <div class="control-group">
+                    <label>Aspect Ratio:</label>
+                    <select id="aspectRatioSelect" class="select-field">
+                        <option value="16/9">16:9</option>
+                        <option value="4/3">4:3</option>
+                        <option value="contain">Contain</option>
+                        <option value="cover">Cover</option>
+                    </select>
+                </div>
+
+                <button id="pipBtn" class="control-btn" title="Picture in Picture">⬜</button>
+                <button id="fullscreenBtn" class="control-btn" title="Fullscreen">⛶</button>
+            </div>
+
+            <!-- RELATED CHANNELS CAROUSEL -->
+            <div class="related-carousel">
+                <div class="carousel-header">Related Channels</div>
+                <div class="carousel-content" id="carouselContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div class="modal-backdrop" id="settingsBackdrop"></div>
+    <div class="modal" id="settingsModal">
+        <div class="modal-content">
+            <h2>Settings</h2>
+            <div class="form-group">
+                <label>Buffer Size (ms):</label>
+                <input type="number" min="100" max="5000" value="1000" class="input-field">
+            </div>
+            <div class="form-group">
+                <label>Auto-Resume:</label>
+                <input type="checkbox" checked class="checkbox">
+            </div>
+            <div class="form-group">
+                <label>Theme:</label>
+                <select class="select-field">
+                    <option>Dark (Default)</option>
+                    <option>Light</option>
+                </select>
+            </div>
+            <button class="btn btn-primary">Save</button>
+            <button id="closeSettingsBtn" class="btn btn-secondary">Close</button>
+        </div>
+    </div>
+
+    <!-- PARTY MODAL -->
+    <div class="modal-backdrop" id="partyBackdrop"></div>
+    <div class="modal" id="partyModal">
+        <div class="modal-content">
+            <h2>Share Link</h2>
+            <div class="form-group">
+                <input type="text" id="partyLink" readonly class="input-field">
+                <button class="btn btn-primary">Copy</button>
+            </div>
+            <div id="chatContainer" style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
+                <h3>Chat</h3>
+                <div id="chatMessages" style="max-height: 200px; overflow-y: auto; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.1); padding: 10px; border-radius: 8px;"></div>
+                <div class="input-group">
+                    <input type="text" id="chatInput" placeholder="Message..." class="input-field">
+                    <button class="btn btn-primary">Send</button>
+                </div>
+            </div>
+            <button id="closePartyBtn" class="btn btn-secondary">Close</button>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="m3u-parser.js"></script>
+    <script src="epg-parser.js"></script>
+    <script src="stream-validator.js"></script>
+    <script src="mpegts.min.js"></script>
+    <script src="app.js"></script>
+    <script src="tivimate-ui.js"></script>
+</body>
+</html>
