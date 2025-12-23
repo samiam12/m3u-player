@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: m3u-player
+    runtime: python
+    runtimeVersion: 3.11
+    buildCommand: |
+      apt-get update && \
+      apt-get install -y ffmpeg && \
+      pip install --upgrade pip
+    startCommand: python3 server.py
+    envVars:
+      - key: M3U_PLAYER_NO_BROWSER
+        value: "1"
+    routes:
+      - type: http
+        path: /

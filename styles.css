@@ -2490,3 +2490,125 @@ body.sidebar-collapsed::before:hover {
     font-size: 11px;
     opacity: 0.7;
 }
+
+/* ==================== RECORDING STYLES ==================== */
+
+.recordings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.recording-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.recording-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--primary-color);
+}
+
+.recording-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.recording-title {
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.recording-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.recording-meta span {
+    white-space: nowrap;
+}
+
+.recording-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: 12px;
+}
+
+.recording-actions button {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+/* Modal Header improvements */
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.modal-footer {
+    display: flex;
+    gap: 10px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border-color);
+    justify-content: flex-end;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Empty state styling */
+.empty-state {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+/* Recording button active state */
+.video-control-btn.active {
+    background: var(--primary-color);
+    color: white;
+}
+
+/* Red recording indicator */
+#videoRecordBtn[style*="background"] {
+    animation: recordingPulse 1.2s infinite;
+}
+
+@keyframes recordingPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7);
+    }
+    50% {
+        box-shadow: 0 0 0 6px rgba(244, 67, 54, 0);
+    }
+}

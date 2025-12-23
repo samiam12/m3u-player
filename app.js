@@ -82,6 +82,12 @@ class M3UPlayerApp {
         this.bufferStatus = 'ready'; // ready, buffering, error
         this.showFullscreenChannelSwitcher = false;
 
+        // Recording state
+        this.isRecording = false;
+        this.recordingStartTime = null;
+        this.recordings = []; // Array of {id, filename, channel, startTime, duration, size, timestamp}
+        this.scheduledRecordings = []; // Array of {id, channel, startTime, duration, scheduled}
+
         this.initializeElements();
         this.attachEventListeners();
         this.loadPersistedState();
@@ -2292,6 +2298,355 @@ ${url}
         }
     }
 
+    // ==================== RECORDING METHODS ====================
+    
+    toggleRecording() {
+        if (!this.currentChannel) {
+            this.showToast('No channel selected', 'error');
+            return;
+        }
+        
+        if (this.isRecording) {
+            this.stopRecording();
+        } else {
+            this.startRecording();
+        }
+    }
+
+    startRecording() {
+        if (this.isRecording) return;
+        
+        this.isRecording = true;
+        this.recordingStartTime = new Date();
+        
+        // Update button appearance - red indicator
+        const recordBtn = document.getElementById('videoRecordBtn');
+        if (recordBtn) {
+            recordBtn.classList.add('active');
+            recordBtn.style.backgroundColor = '#f44336';
+        }
+        
+        const channelName = this.currentChannel.name || 'Unknown';
+        this.showToast(`Recording "${channelName}" started...`, 'success');
+        
+        // Send start recording request to server
+        const data = {
+            channel: channelName,
+            url: this.currentChannel.url,
+            startTime: this.recordingStartTime.toISOString()
+        };
+        
+        fetch('/recording/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }).then(r => r.json()).then(res => {
+            if (res.success) {
+                console.log('Recording started on server:', res.recordingId);
+            } else {
+                this.isRecording = false;
+                recordBtn.classList.remove('active');
+                recordBtn.style.backgroundColor = '';
+                this.showToast('Failed to start recording: ' + (res.error || 'Unknown error'), 'error');
+            }
+        }).catch(err => {
+            console.error('Recording start error:', err);
+            this.isRecording = false;
+            recordBtn.classList.remove('active');
+            recordBtn.style.backgroundColor = '';
+            this.showToast('Recording error: ' + err.message, 'error');
+        });
+    }
+
+    stopRecording() {
+        if (!this.isRecording) return;
+        
+        const recordBtn = document.getElementById('videoRecordBtn');
+        if (recordBtn) {
+            recordBtn.classList.remove('active');
+            recordBtn.style.backgroundColor = '';
+        }
+        
+        const duration = Math.round((new Date() - this.recordingStartTime) / 1000);
+        const minutes = Math.floor(duration / 60);
+        const seconds = duration % 60;
+        
+        this.showToast(`Recording stopped (${minutes}m ${seconds}s)`, 'success');
+        
+        // Send stop recording request to server
+        fetch('/recording/stop', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                channel: this.currentChannel.name,
+                stopTime: new Date().toISOString(),
+                duration: duration
+            })
+        }).then(r => r.json()).then(res => {
+            if (res.success) {
+                console.log('Recording stopped on server');
+                this.isRecording = false;
+                this.recordingStartTime = null;
+                // Refresh recordings list
+                this.loadRecordings();
+            }
+        }).catch(err => {
+            console.error('Recording stop error:', err);
+            this.isRecording = false;
+            this.recordingStartTime = null;
+        });
+    }
+
+    loadRecordings() {
+        fetch('/recording/list')
+            .then(r => r.json())
+            .then(data => {
+                this.recordings = data.recordings || [];
+                console.log('Loaded recordings:', this.recordings);
+            })
+            .catch(err => console.error('Failed to load recordings:', err));
+    }
+
+    showRecordingsModal() {
+        // Load recordings first
+        fetch('/recording/list')
+            .then(r => r.json())
+            .then(data => {
+                this.recordings = data.recordings || [];
+                this._displayRecordingsModal();
+            })
+            .catch(err => {
+                this.showToast('Failed to load recordings: ' + err.message, 'error');
+            });
+    }
+
+    _displayRecordingsModal() {
+        const modal = document.createElement('div');
+        modal.id = 'recordingsModal';
+        modal.className = 'modal';
+        
+        let recordingsHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>📹 Recordings</h2>
+                    <button class="modal-close" onclick="document.getElementById('recordingsModal').remove()">✕</button>
+                </div>
+                <div class="modal-body">
+        `;
+        
+        if (this.recordings.length === 0) {
+            recordingsHTML += '<p class="empty-state">No recordings yet. Start recording a stream to save clips!</p>';
+        } else {
+            recordingsHTML += '<div class="recordings-list">';
+            this.recordings.forEach(rec => {
+                const date = new Date(rec.timestamp);
+                const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                const sizeStr = (rec.size / (1024*1024)).toFixed(2) + ' MB';
+                const durationStr = this._formatDuration(rec.duration);
+                
+                recordingsHTML += `
+                    <div class="recording-item">
+                        <div class="recording-info">
+                            <div class="recording-title">${rec.channel}</div>
+                            <div class="recording-meta">
+                                <span>${dateStr}</span>
+                                <span>${durationStr}</span>
+                                <span>${sizeStr}</span>
+                            </div>
+                        </div>
+                        <div class="recording-actions">
+                            <button class="btn-secondary" onclick="app.playRecording('${rec.filename}')">▶ Play</button>
+                            <button class="btn-secondary" onclick="app.deleteRecording('${rec.filename}')">🗑️ Delete</button>
+                        </div>
+                    </div>
+                `;
+            });
+            recordingsHTML += '</div>';
+        }
+        
+        recordingsHTML += `
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" onclick="app.showScheduleRecordingModal()">⏱️ Schedule</button>
+                    <button class="btn-secondary" onclick="document.getElementById('recordingsModal').remove()">Close</button>
+                </div>
+            </div>
+        `;
+        
+        modal.innerHTML = recordingsHTML;
+        document.body.appendChild(modal);
+    }
+
+    playRecording(filename) {
+        const recordingUrl = `/recording/play?file=${encodeURIComponent(filename)}`;
+        
+        // Load the recording in the video player
+        this.loadStream(recordingUrl, 'Recording: ' + filename);
+        
+        // Close modal
+        const modal = document.getElementById('recordingsModal');
+        if (modal) modal.remove();
+        
+        this.showToast('Playing recording...', 'success');
+    }
+
+    deleteRecording(filename) {
+        if (!confirm('Delete this recording?')) return;
+        
+        fetch('/recording/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: filename })
+        }).then(r => r.json()).then(res => {
+            if (res.success) {
+                this.showToast('Recording deleted', 'success');
+                this.loadRecordings();
+                this.showRecordingsModal();
+            } else {
+                this.showToast('Failed to delete: ' + (res.error || 'Unknown error'), 'error');
+            }
+        }).catch(err => {
+            this.showToast('Delete error: ' + err.message, 'error');
+        });
+    }
+
+    _formatDuration(seconds) {
+        if (!seconds) return '0s';
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+        
+        if (hours > 0) return `${hours}h ${minutes}m`;
+        if (minutes > 0) return `${minutes}m ${secs}s`;
+        return `${secs}s`;
+    }
+
+    showScheduleRecordingModal() {
+        const modal = document.createElement('div');
+        modal.id = 'scheduleModal';
+        modal.className = 'modal';
+        
+        // Get current time and add 1 hour as default
+        const now = new Date();
+        const scheduledTime = new Date(now.getTime() + 3600000);
+        const dateStr = scheduledTime.toISOString().slice(0, 16);
+        
+        // Build channel select options
+        let channelOptions = '<option value="">Select channel...</option>';
+        this.channels.forEach(ch => {
+            channelOptions += `<option value="${ch.url}">${ch.name}</option>`;
+        });
+        
+        const html = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>⏱️ Schedule Recording</h2>
+                    <button class="modal-close" onclick="document.getElementById('scheduleModal').remove()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-row">
+                        <label for="scheduleChannel">Channel:</label>
+                        <select id="scheduleChannel" style="padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.06); color: var(--text-primary);">
+                            ${channelOptions}
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label for="scheduleStartTime">Start Time:</label>
+                        <input type="datetime-local" id="scheduleStartTime" value="${dateStr}" style="padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.06); color: var(--text-primary);">
+                    </div>
+                    <div class="form-row">
+                        <label for="scheduleDuration">Duration (minutes):</label>
+                        <input type="number" id="scheduleDuration" value="60" min="5" max="600" style="padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.06); color: var(--text-primary);">
+                    </div>
+                    <p class="help-text">The recording will start at the specified time and continue for the specified duration.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" onclick="document.getElementById('scheduleModal').remove()">Cancel</button>
+                    <button class="btn-primary" onclick="app.confirmScheduleRecording()">Schedule</button>
+                </div>
+            </div>
+        `;
+        
+        modal.innerHTML = html;
+        document.body.appendChild(modal);
+    }
+
+    confirmScheduleRecording() {
+        const channelUrl = document.getElementById('scheduleChannel').value;
+        const startTime = document.getElementById('scheduleStartTime').value;
+        const duration = parseInt(document.getElementById('scheduleDuration').value);
+        
+        if (!channelUrl) {
+            this.showToast('Please select a channel', 'error');
+            return;
+        }
+        
+        if (!startTime) {
+            this.showToast('Please select a start time', 'error');
+            return;
+        }
+        
+        // Find the channel object
+        const channel = this.channels.find(ch => ch.url === channelUrl);
+        if (!channel) {
+            this.showToast('Channel not found', 'error');
+            return;
+        }
+        
+        // Schedule the recording
+        const scheduledAt = new Date(startTime).getTime();
+        const now = Date.now();
+        
+        if (scheduledAt <= now) {
+            this.showToast('Please select a future time', 'error');
+            return;
+        }
+        
+        // Calculate delay until recording should start
+        const delay = scheduledAt - now;
+        
+        // Store scheduled recording
+        const scheduleId = `sched_${Date.now()}`;
+        this.scheduledRecordings.push({
+            id: scheduleId,
+            channel: channel.name,
+            channelUrl: channelUrl,
+            startTime: scheduledAt,
+            duration: duration * 60,
+            scheduled: true
+        });
+        
+        // Schedule the recording to start at the specified time
+        setTimeout(() => {
+            if (this.scheduledRecordings.find(s => s.id === scheduleId)) {
+                // Load the channel
+                this.currentChannel = channel;
+                this.loadStream(channel.url, channel.name);
+                
+                // Start recording
+                this.isRecording = false; // Reset state
+                this.startRecording();
+                
+                this.showToast(`Scheduled recording started for "${channel.name}"`, 'success');
+            }
+        }, delay);
+        
+        // Schedule stop
+        setTimeout(() => {
+            if (this.isRecording && this.scheduledRecordings.find(s => s.id === scheduleId)) {
+                this.stopRecording();
+                this.showToast(`Scheduled recording ended for "${channel.name}"`, 'success');
+            }
+            this.scheduledRecordings = this.scheduledRecordings.filter(s => s.id !== scheduleId);
+        }, delay + (duration * 60 * 1000));
+        
+        this.showToast(`Recording scheduled for "${channel.name}" at ${new Date(scheduledAt).toLocaleString()}`, 'success');
+        
+        // Close modals
+        document.getElementById('scheduleModal')?.remove();
+        document.getElementById('recordingsModal')?.remove();
+    }
+
     toggleCaptions() {
         // Toggle captions flag
         if (this.videoPlayer.textTracks.length > 0) {
@@ -2640,6 +2995,12 @@ ${url}
                     <button class="video-control-btn" id="videoChannelSwitcherBtn" title="Switch Channel">
                         🎬
                     </button>
+                    <button class="video-control-btn" id="videoRecordBtn" title="Record Stream">
+                        <span id="recordBtnIcon">⏺</span>
+                    </button>
+                    <button class="video-control-btn" id="videoRecordingsBtn" title="View Recordings">
+                        🎞️
+                    </button>
                 </div>
                 <div class="video-control-right">
                     <button class="video-control-btn" id="videoFullscreenBtn" title="Fullscreen">
@@ -2689,6 +3050,14 @@ ${url}
         }
         if (channelSwitcherBtn) {
             channelSwitcherBtn.addEventListener('click', () => this.showChannelSwitcherModal());
+        }
+        const recordBtn = document.getElementById('videoRecordBtn');
+        const recordingsBtn = document.getElementById('videoRecordingsBtn');
+        if (recordBtn) {
+            recordBtn.addEventListener('click', () => this.toggleRecording());
+        }
+        if (recordingsBtn) {
+            recordingsBtn.addEventListener('click', () => this.showRecordingsModal());
         }
         if (fullscreenBtn) {
             fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
