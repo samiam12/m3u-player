@@ -143,13 +143,6 @@ class M3UPlayerApp {
         this.nowPlayingSub = document.getElementById('nowPlayingSub');
 
         // Player controls
-        this.fullscreenHUD = document.getElementById('fullscreenHUD');
-        this.hudChannelSwitcherBtn = document.getElementById('hudChannelSwitcherBtn');
-        this.hudVolumeBtn = document.getElementById('hudVolumeBtn');
-        this.hudVolumeSlider = document.getElementById('hudVolumeSlider');
-        this.hudFullscreenExitBtn = document.getElementById('hudFullscreenExitBtn');
-        this.hudBufferFill = document.querySelector('.hud-buffer-fill');
-        this.hudBufferText = document.getElementById('hudBufferText');
         this.keyboardHints = document.getElementById('keyboardHints');
         this.channelSwitcherModal = document.getElementById('channelSwitcherModal');
         this.closeChannelSwitcherBtn = document.getElementById('closeChannelSwitcherBtn');
@@ -323,21 +316,6 @@ class M3UPlayerApp {
         }
 
         // Player controls
-        if (this.hudChannelSwitcherBtn) {
-            this.hudChannelSwitcherBtn.addEventListener('click', () => this.showChannelSwitcherModal());
-        }
-        if (this.hudVolumeSlider) {
-            this.hudVolumeSlider.addEventListener('input', (e) => {
-                this.volume = parseInt(e.target.value);
-                this.updateHUDVolume();
-            });
-        }
-        if (this.hudVolumeBtn) {
-            this.hudVolumeBtn.addEventListener('click', () => this.toggleHUDMute());
-        }
-        if (this.hudFullscreenExitBtn) {
-            this.hudFullscreenExitBtn.addEventListener('click', () => this.toggleFullscreen());
-        }
         if (this.closeChannelSwitcherBtn) {
             this.closeChannelSwitcherBtn.addEventListener('click', () => this.hideChannelSwitcherModal());
         }
@@ -726,7 +704,6 @@ class M3UPlayerApp {
                 this.exitFakeFullscreen(target);
             }
             // Hide HUD
-            if (this.fullscreenHUD) this.fullscreenHUD.style.display = 'none';
             if (this.keyboardHints) this.keyboardHints.style.display = 'none';
             return;
         }
@@ -737,14 +714,12 @@ class M3UPlayerApp {
             target.requestFullscreen().then(() => {
                 this.sendDebugLog('requestFullscreen SUCCESS');
                 // Show HUD
-                if (this.fullscreenHUD) this.fullscreenHUD.style.display = 'flex';
                 if (this.keyboardHints) this.keyboardHints.style.display = 'block';
             }).catch(err => {
                 this.sendDebugLog(`requestFullscreen FAILED: ${err.message}`, 'ERROR');
                 // Fallback for standalone mode where fullscreen API doesn't work
                 if (isStandalone) {
                     this.enterFakeFullscreen(target);
-                    if (this.fullscreenHUD) this.fullscreenHUD.style.display = 'flex';
                     if (this.keyboardHints) this.keyboardHints.style.display = 'block';
                 }
             });
@@ -752,14 +727,12 @@ class M3UPlayerApp {
             this.sendDebugLog('Calling webkitRequestFullscreen...');
             target.webkitRequestFullscreen();
             // Show HUD
-            if (this.fullscreenHUD) this.fullscreenHUD.style.display = 'flex';
             if (this.keyboardHints) this.keyboardHints.style.display = 'block';
             this.sendDebugLog('webkitRequestFullscreen SUCCESS');
         } else if (isStandalone) {
             // Standalone mode fallback when no fullscreen API available
             this.sendDebugLog('Using fake fullscreen for standalone mode');
             this.enterFakeFullscreen(target);
-            if (this.fullscreenHUD) this.fullscreenHUD.style.display = 'flex';
             if (this.keyboardHints) this.keyboardHints.style.display = 'block';
         } else {
             this.sendDebugLog('requestFullscreen not available', 'ERROR');
@@ -2631,6 +2604,7 @@ ${url}
         hud.innerHTML = `
             <div class="video-progress-container">
                 <div class="video-progress-bar" id="videoProgressBar" style="--progress: 0%"></div>
+                <div class="video-buffer-bar" id="videoBufferBar" style="--buffer: 0%"></div>
                 <div class="video-time" id="videoTime">0:00 / LIVE</div>
             </div>
             <div class="video-control-buttons">
@@ -2641,6 +2615,7 @@ ${url}
                     <button class="video-control-btn" id="videoMuteBtn" title="Mute/Unmute">
                         <span id="muteBtnIcon">🔊</span>
                     </button>
+                    <input type="range" id="videoVolumeSlider" class="video-volume-slider" min="0" max="100" value="100">
                     <button class="video-control-btn" id="videoCaptionsBtn" title="Toggle Captions">
                         <span id="captionsBtnIcon">CC</span>
                     </button>
@@ -2655,6 +2630,9 @@ ${url}
                     </button>
                     <button class="video-control-btn" id="videoPartyBtn" title="Group Watching Party">
                         👥
+                    </button>
+                    <button class="video-control-btn" id="videoChannelSwitcherBtn" title="Switch Channel">
+                        🎬
                     </button>
                 </div>
                 <div class="video-control-right">
@@ -2674,6 +2652,7 @@ ${url}
         const multiviewBtn = document.getElementById('videoMultiviewBtn');
         const exitMultiviewBtn = document.getElementById('videoExitMultiviewBtn');
         const partyBtn = document.getElementById('videoPartyBtn');
+        const channelSwitcherBtn = document.getElementById('videoChannelSwitcherBtn');
         const fullscreenBtn = document.getElementById('videoFullscreenBtn');
         const progressBar = document.getElementById('videoProgressBar');
 
@@ -2701,6 +2680,9 @@ ${url}
         if (partyBtn) {
             partyBtn.addEventListener('click', () => this.togglePartyModal());
         }
+        if (channelSwitcherBtn) {
+            channelSwitcherBtn.addEventListener('click', () => this.showChannelSwitcherModal());
+        }
         if (fullscreenBtn) {
             fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
             fullscreenBtn.addEventListener('touchend', (e) => {
@@ -2719,11 +2701,32 @@ ${url}
             });
         }
 
+        // Volume slider
+        const volumeSlider = document.getElementById('videoVolumeSlider');
+        if (volumeSlider) {
+            volumeSlider.addEventListener('input', (e) => {
+                const volume = parseInt(e.target.value);
+                this.videoPlayer.volume = volume / 100;
+                // Update mute button icon
+                const muteBtnIcon = document.getElementById('muteBtnIcon');
+                if (muteBtnIcon) {
+                    if (volume === 0) {
+                        muteBtnIcon.textContent = '🔇';
+                    } else if (volume < 50) {
+                        muteBtnIcon.textContent = '🔉';
+                    } else {
+                        muteBtnIcon.textContent = '🔊';
+                    }
+                }
+            });
+        }
+
         // Update HUD on video time update
         this.videoPlayer.addEventListener('timeupdate', () => this.updateVideoControlsHUD());
         this.videoPlayer.addEventListener('loadedmetadata', () => this.updateVideoControlsHUD());
         this.videoPlayer.addEventListener('play', () => this.updateVideoControlsHUD());
         this.videoPlayer.addEventListener('pause', () => this.updateVideoControlsHUD());
+        this.videoPlayer.addEventListener('progress', () => this.updateVideoBufferBar());
 
         // Show/hide HUD on mouse move
         let hideTimeout;
@@ -2800,6 +2803,23 @@ ${url}
         this.updateMuteButtonState();
         this.updateCaptionButtonState();
         this.updateMultiviewButtonState();
+    }
+
+    updateVideoBufferBar() {
+        const bufferBar = document.getElementById('videoBufferBar');
+        if (!bufferBar || !this.videoPlayer.buffered) return;
+
+        // Calculate buffered percentage
+        let bufferedEnd = 0;
+        if (this.videoPlayer.buffered.length > 0) {
+            bufferedEnd = this.videoPlayer.buffered.end(this.videoPlayer.buffered.length - 1);
+        }
+
+        const duration = this.videoPlayer.duration || 0;
+        if (duration > 0) {
+            const bufferPercent = (bufferedEnd / duration) * 100;
+            bufferBar.style.setProperty('--buffer', `${Math.min(bufferPercent, 100)}%`);
+        }
     }
 
     updateMultiviewButtonState() {
@@ -3564,10 +3584,34 @@ ${url}
             const overrides = this.channelOverrides[channel.id] || {};
             const displayName = overrides.name || channel.name;
             const displayGroup = overrides.group || channel.group || 'Uncategorized';
+            const logoUrl = overrides.logo || channel.tvgIcon || '';
+            
+            // Get current EPG program for this channel
+            let epgInfo = '';
+            if (this.epgData && this.epgData.aligned) {
+                const programs = this.epgData.aligned.get(channel.id) || [];
+                if (programs.length > 0) {
+                    const now = Date.now();
+                    const currentProgram = programs.find(p => {
+                        const startTime = new Date(p.start).getTime();
+                        const endTime = new Date(p.stop).getTime();
+                        return startTime <= now && now < endTime;
+                    });
+                    if (currentProgram) {
+                        epgInfo = currentProgram.title || '';
+                    }
+                }
+            }
             
             item.innerHTML = `
-                <div class="channel-item-name">${displayName}</div>
-                <div class="channel-item-group">${displayGroup}</div>
+                <div class="channel-item-content">
+                    ${logoUrl ? `<img class="channel-item-logo" src="${logoUrl}" alt="${displayName}">` : '<div class="channel-item-logo-placeholder">📺</div>'}
+                    <div class="channel-item-info">
+                        <div class="channel-item-name">${displayName}</div>
+                        <div class="channel-item-group">${displayGroup}</div>
+                        ${epgInfo ? `<div class="channel-item-epg">${epgInfo}</div>` : ''}
+                    </div>
+                </div>
             `;
             
             item.addEventListener('click', () => {
@@ -3577,52 +3621,6 @@ ${url}
             
             this.channelSwitcherList.appendChild(item);
         });
-    }
-
-    updateHUDVolume() {
-        if (this.videoPlayer) {
-            this.videoPlayer.volume = this.volume / 100;
-        }
-        if (this.hudVolumeSlider) {
-            this.hudVolumeSlider.value = this.volume;
-        }
-        if (this.hudVolumeBtn) {
-            if (this.volume === 0) {
-                this.hudVolumeBtn.textContent = '🔇';
-            } else if (this.volume < 50) {
-                this.hudVolumeBtn.textContent = '🔉';
-            } else {
-                this.hudVolumeBtn.textContent = '🔊';
-            }
-        }
-    }
-
-    toggleHUDMute() {
-        if (this.volume === 0) {
-            this.volume = 100;
-        } else {
-            this.volume = 0;
-        }
-        this.updateHUDVolume();
-    }
-
-    updateHUDBufferStatus(status) {
-        if (!this.hudBufferFill || !this.hudBufferText) return;
-        
-        switch (status) {
-            case 'buffering':
-                this.hudBufferFill.style.background = 'linear-gradient(90deg, #FF9800, #F57C00)';
-                this.hudBufferText.textContent = 'Buffering';
-                break;
-            case 'ready':
-                this.hudBufferFill.style.background = 'linear-gradient(90deg, #4CAF50, #45a049)';
-                this.hudBufferText.textContent = 'Ready';
-                break;
-            case 'error':
-                this.hudBufferFill.style.background = 'linear-gradient(90deg, #F44336, #E53935)';
-                this.hudBufferText.textContent = 'Error';
-                break;
-        }
     }
 }
 
