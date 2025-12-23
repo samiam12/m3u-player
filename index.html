@@ -99,43 +99,22 @@
               <div class="player-info">
                 <h3 id="currentChannelName">No channel selected</h3>
                 <p id="currentChannelInfo">Select a channel from the sidebar</p>
+                <button class="btn-secondary" id="channelSwitcherBtn" style="margin-top: 10px;">📺 Switch Channel</button>
                 <p style="margin-top: 10px; font-size: 0.85rem; color: var(--text-secondary);">
                   Press <kbd>↑</kbd><kbd>↓</kbd> to navigate • <kbd>Space</kbd> to play/pause • <kbd>F</kbd> for fullscreen
                 </p>
               </div>
             </div>
-            <!-- Player Controls -->
-            <div class="player-controls" id="playerControls">
-              <div class="player-controls-left">
-                <button class="btn-icon" id="playPauseBtn" title="Play/Pause">⏯</button>
-                <div class="volume-control">
-                  <button class="btn-icon" id="volumeBtn" title="Mute">🔊</button>
-                  <input type="range" id="volumeSlider" min="0" max="100" value="100" class="volume-slider">
-                  <span class="volume-value" id="volumeValue">100%</span>
+            <!-- Channel Switcher Modal -->
+            <div id="channelSwitcherModal" class="channel-switcher-modal" style="display: none;">
+              <div class="channel-switcher-content">
+                <div class="channel-switcher-header">
+                  <h3>Select Channel</h3>
+                  <button class="btn-icon" id="closeChannelSwitcherBtn">✖</button>
                 </div>
-                <div class="buffer-indicator" id="bufferIndicator">
-                  <div class="buffer-bar"><div class="buffer-fill"></div></div>
-                  <span class="buffer-text" id="bufferText">Ready</span>
+                <div class="channel-switcher-list" id="channelSwitcherList">
+                  <!-- Populated by JS -->
                 </div>
-              </div>
-              <div class="player-controls-right">
-                <div class="aspect-ratio-buttons">
-                  <button class="btn-icon aspect-btn" data-aspect="16:9" title="16:9">16:9</button>
-                  <button class="btn-icon aspect-btn" data-aspect="4:3" title="4:3">4:3</button>
-                  <button class="btn-icon aspect-btn" data-aspect="stretch" title="Stretch">⤢</button>
-                  <button class="btn-icon aspect-btn" data-aspect="fit" title="Fit">⬜</button>
-                </div>
-                <button class="btn-icon" id="fullscreenBtn" title="Fullscreen">⛶</button>
-              </div>
-            </div>
-            <!-- Fullscreen Channel Switcher -->
-            <div class="fullscreen-channel-switcher" id="fullscreenChannelSwitcher" style="display: none;">
-              <div class="channel-switcher-header">
-                <h4 id="switcherTitle">Select Channel</h4>
-                <button class="btn-icon" id="closeChannelSwitcher" title="Close">✖</button>
-              </div>
-              <div class="channel-switcher-carousel" id="channelSwitcherCarousel">
-                <!-- Will be populated by JavaScript -->
               </div>
             </div>
           </div>

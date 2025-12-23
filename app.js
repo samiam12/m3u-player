@@ -143,21 +143,10 @@ class M3UPlayerApp {
         this.nowPlayingSub = document.getElementById('nowPlayingSub');
 
         // Player controls
-        this.playerControls = document.getElementById('playerControls');
-        this.volumeBtn = document.getElementById('volumeBtn');
-        this.volumeSlider = document.getElementById('volumeSlider');
-        this.volumeValue = document.getElementById('volumeValue');
-        this.playPauseBtn = document.getElementById('playPauseBtn');
-        this.fullscreenBtn = document.getElementById('fullscreenBtn');
-        this.bufferIndicator = document.getElementById('bufferIndicator');
-        this.bufferFill = this.bufferIndicator?.querySelector('.buffer-fill');
-        this.bufferText = document.getElementById('bufferText');
-        this.aspectButtons = document.querySelectorAll('.aspect-btn');
-        
-        // Fullscreen channel switcher
-        this.fullscreenChannelSwitcher = document.getElementById('fullscreenChannelSwitcher');
-        this.channelSwitcherCarousel = document.getElementById('channelSwitcherCarousel');
-        this.closeChannelSwitcherBtn = document.getElementById('closeChannelSwitcher');
+        this.channelSwitcherBtn = document.getElementById('channelSwitcherBtn');
+        this.channelSwitcherModal = document.getElementById('channelSwitcherModal');
+        this.closeChannelSwitcherBtn = document.getElementById('closeChannelSwitcherBtn');
+        this.channelSwitcherList = document.getElementById('channelSwitcherList');
 
         // Modals
         this.settingsModal = document.getElementById('settingsModal');
@@ -327,35 +316,18 @@ class M3UPlayerApp {
         }
 
         // Player controls
-        if (this.volumeSlider) {
-            this.volumeSlider.addEventListener('input', (e) => {
-                this.volume = parseInt(e.target.value);
-                this.updateVolume();
-            });
+        if (this.channelSwitcherBtn) {
+            this.channelSwitcherBtn.addEventListener('click', () => this.showChannelSwitcherModal());
         }
-        if (this.volumeBtn) {
-            this.volumeBtn.addEventListener('click', () => this.toggleMute());
-        }
-        if (this.playPauseBtn) {
-            this.playPauseBtn.addEventListener('click', () => this.togglePlayPause());
-        }
-        if (this.fullscreenBtn) {
-            this.fullscreenBtn.addEventListener('click', () => this.toggleFullscreenWithChannelSwitcher());
-        }
-        
-        // Aspect ratio buttons
-        this.aspectButtons.forEach(btn => {
-            btn.addEventListener('click', () => {
-                const aspect = btn.dataset.aspect;
-                this.setAspectRatio(aspect);
-                this.aspectButtons.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-            });
-        });
-
-        // Fullscreen channel switcher
         if (this.closeChannelSwitcherBtn) {
-            this.closeChannelSwitcherBtn.addEventListener('click', () => this.hideChannelSwitcher());
+            this.closeChannelSwitcherBtn.addEventListener('click', () => this.hideChannelSwitcherModal());
+        }
+        if (this.channelSwitcherModal) {
+            this.channelSwitcherModal.addEventListener('click', (e) => {
+                if (e.target === this.channelSwitcherModal) {
+                    this.hideChannelSwitcherModal();
+                }
+            });
         }
 
         // Edit channel modal actions
@@ -734,12 +706,6 @@ class M3UPlayerApp {
             if (isFakeFullscreen) {
                 this.exitFakeFullscreen(target);
             }
-            // Hide controls
-            if (this.playerControls) {
-                this.playerControls.style.opacity = '0';
-                this.playerControls.style.pointerEvents = 'none';
-            }
-            this.hideChannelSwitcher();
             return;
         }
 
@@ -748,12 +714,6 @@ class M3UPlayerApp {
             this.sendDebugLog('Calling requestFullscreen...');
             target.requestFullscreen().then(() => {
                 this.sendDebugLog('requestFullscreen SUCCESS');
-                // Show controls overlay
-                if (this.playerControls) {
-                    this.playerControls.style.opacity = '1';
-                    this.playerControls.style.pointerEvents = 'auto';
-                }
-                this.showChannelSwitcher();
             }).catch(err => {
                 this.sendDebugLog(`requestFullscreen FAILED: ${err.message}`, 'ERROR');
                 // Fallback for standalone mode where fullscreen API doesn't work
@@ -764,22 +724,11 @@ class M3UPlayerApp {
         } else if (target && target.webkitRequestFullscreen) {
             this.sendDebugLog('Calling webkitRequestFullscreen...');
             target.webkitRequestFullscreen();
-            // Show controls overlay
-            if (this.playerControls) {
-                this.playerControls.style.opacity = '1';
-                this.playerControls.style.pointerEvents = 'auto';
-            }
-            this.showChannelSwitcher();
             this.sendDebugLog('webkitRequestFullscreen SUCCESS');
         } else if (isStandalone) {
             // Standalone mode fallback when no fullscreen API available
             this.sendDebugLog('Using fake fullscreen for standalone mode');
             this.enterFakeFullscreen(target);
-            if (this.playerControls) {
-                this.playerControls.style.opacity = '1';
-                this.playerControls.style.pointerEvents = 'auto';
-            }
-            this.showChannelSwitcher();
         } else {
             this.sendDebugLog('requestFullscreen not available', 'ERROR');
         }
@@ -3553,34 +3502,27 @@ ${url}
     }
 
     // ============ FULLSCREEN CHANNEL SWITCHER ============
-    toggleFullscreenWithChannelSwitcher() {
-        this.toggleFullscreen();
-        if (document.fullscreenElement) {
-            setTimeout(() => this.showChannelSwitcher(), 500);
+    showChannelSwitcherModal() {
+        if (!this.channelSwitcherModal) return;
+        
+        this.channelSwitcherModal.style.display = 'flex';
+        this.populateChannelSwitcherModal();
+    }
+
+    hideChannelSwitcherModal() {
+        if (this.channelSwitcherModal) {
+            this.channelSwitcherModal.style.display = 'none';
         }
     }
 
-    showChannelSwitcher() {
-        if (!this.fullscreenChannelSwitcher) return;
+    populateChannelSwitcherModal() {
+        if (!this.channelSwitcherList) return;
         
-        this.fullscreenChannelSwitcher.style.display = 'block';
-        this.populateChannelSwitcher();
-    }
-
-    hideChannelSwitcher() {
-        if (this.fullscreenChannelSwitcher) {
-            this.fullscreenChannelSwitcher.style.display = 'none';
-        }
-    }
-
-    populateChannelSwitcher() {
-        if (!this.channelSwitcherCarousel) return;
-        
-        this.channelSwitcherCarousel.innerHTML = '';
+        this.channelSwitcherList.innerHTML = '';
         
         const visibleChannels = this.filteredChannels.length > 0 ? this.filteredChannels : this.channels;
         
-        visibleChannels.slice(0, 20).forEach(channel => {
+        visibleChannels.forEach(channel => {
             const item = document.createElement('div');
             item.className = 'channel-switcher-item';
             if (this.currentChannel && this.currentChannel.id === channel.id) {
@@ -3592,17 +3534,16 @@ ${url}
             const displayGroup = overrides.group || channel.group || 'Uncategorized';
             
             item.innerHTML = `
-                <div class="channel-switcher-item-name">${displayName}</div>
-                <div class="channel-switcher-item-group">${displayGroup}</div>
+                <div class="channel-item-name">${displayName}</div>
+                <div class="channel-item-group">${displayGroup}</div>
             `;
             
             item.addEventListener('click', () => {
-                this.playChannel(channel, null);
-                item.classList.add('active');
-                this.hideChannelSwitcher();
+                this.playChannel(channel);
+                this.hideChannelSwitcherModal();
             });
             
-            this.channelSwitcherCarousel.appendChild(item);
+            this.channelSwitcherList.appendChild(item);
         });
     }
 }

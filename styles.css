@@ -636,8 +636,84 @@ body.video-playing .player-toolbar .player-toolbar-right { max-width: 40%; }
     border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* Player Controls */
-.player-controls {
+/* Channel Switcher Modal */
+.channel-switcher-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.95);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.channel-switcher-content {
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 20px;
+    max-width: 90vw;
+    max-height: 90vh;
+    overflow-y: auto;
+    width: 100%;
+}
+
+.channel-switcher-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.channel-switcher-header h3 {
+    margin: 0;
+    font-size: 1.3rem;
+}
+
+.channel-switcher-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.channel-switcher-item {
+    background: rgba(255, 255, 255, 0.08);
+    border: 2px solid transparent;
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+
+.channel-switcher-item:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: var(--accent-color);
+}
+
+.channel-switcher-item.active {
+    background: var(--accent-color);
+    color: #000;
+    border-color: var(--accent-color);
+}
+
+.channel-item-name {
+    font-weight: 500;
+    margin-bottom: 5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.channel-item-group {
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
+
     position: absolute;
     bottom: 0;
     left: 0;
