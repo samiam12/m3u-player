@@ -589,6 +589,14 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 for filepath in all_files:
                     filename = filepath.name
                     print(f"[RECORDING] Processing file: {filename}")
+                    
+                    # Extract channel from filename (format: rec_TIMESTAMP_CHANNEL.ts)
+                    try:
+                        parts = filename.replace('.ts', '').split('_', 2)  # Split into rec, timestamp, channel
+                        channel_from_file = parts[2] if len(parts) > 2 else 'Unknown'
+                    except:
+                        channel_from_file = 'Unknown'
+                    
                     if filename in RECORDED_FILES:
                         info = RECORDED_FILES[filename]
                     else:
@@ -596,19 +604,28 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         try:
                             size = filepath.stat().st_size
                             mtime = filepath.stat().st_mtime
-                            duration = 0
+                            
+                            # Try to get timestamp from filename for better accuracy
+                            try:
+                                timestamp = int(parts[1])
+                            except:
+                                timestamp = int(mtime)
+                            
+                            # Estimate duration: current time - file start time
+                            duration = max(0, int(time.time()) - timestamp)
+                            
                             info = {
-                                'channel': 'Unknown',
+                                'channel': channel_from_file,
                                 'size': size,
                                 'duration': duration,
-                                'timestamp': int(mtime)
+                                'timestamp': timestamp
                             }
                         except:
                             continue
                     
                     recordings.append({
                         'filename': filename,
-                        'channel': info.get('channel', 'Unknown'),
+                        'channel': info.get('channel', channel_from_file),
                         'size': info.get('size', 0),
                         'duration': info.get('duration', 0),
                         'timestamp': info.get('timestamp', 0)
