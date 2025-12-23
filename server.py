@@ -502,19 +502,27 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             body = self.rfile.read(content_length)
             data = json.loads(body.decode())
             
+            print(f"[RECORDING] Stop request for channel: {data.get('channel')}")
+            print(f"[RECORDING] Active recordings: {list(ACTIVE_RECORDINGS.keys())}")
+            
             # Find and stop the active recording
             stopped = False
             for filename, rec_info in list(ACTIVE_RECORDINGS.items()):
                 if rec_info.get('channel') == data.get('channel'):
                     try:
+                        print(f"[RECORDING] Terminating process for: {filename}")
                         rec_info['process'].terminate()
                         rec_info['process'].wait(timeout=5)
                         stopped = True
                         print(f"[RECORDING] Stopped: {filename}")
                         break
-                    except:
+                    except Exception as e:
+                        print(f"[RECORDING] Error stopping {filename}: {e}")
                         rec_info['process'].kill()
                         stopped = True
+            
+            if not stopped:
+                print(f"[RECORDING] No matching recording found to stop")
             
             response = json.dumps({'success': stopped})
             self.send_response(200)
@@ -531,9 +539,13 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         try:
             # Scan recordings directory for files
             recordings = []
+            print(f"[RECORDING] Scanning directory: {RECORDINGS_DIR}")
             if RECORDINGS_DIR.exists():
-                for filepath in RECORDINGS_DIR.glob('rec_*.ts'):
+                all_files = list(RECORDINGS_DIR.glob('rec_*.ts'))
+                print(f"[RECORDING] Found {len(all_files)} recording files")
+                for filepath in all_files:
                     filename = filepath.name
+                    print(f"[RECORDING] Processing file: {filename}")
                     if filename in RECORDED_FILES:
                         info = RECORDED_FILES[filename]
                     else:
@@ -558,9 +570,12 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         'duration': info.get('duration', 0),
                         'timestamp': info.get('timestamp', 0)
                     })
+            else:
+                print(f"[RECORDING] Directory does not exist: {RECORDINGS_DIR}")
             
             # Sort by timestamp descending (newest first)
             recordings.sort(key=lambda x: x['timestamp'], reverse=True)
+            print(f"[RECORDING] Returning {len(recordings)} recordings")
             
             response = json.dumps({'recordings': recordings})
             self.send_response(200)
@@ -570,6 +585,8 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(response.encode())
         except Exception as e:
             print(f"[RECORDING] List error: {str(e)}")
+            import traceback
+            traceback.print_exc()
             self.send_error(500, str(e))
 
     def handle_recording_delete(self):
