@@ -49,7 +49,6 @@ else:
 
 print("[SERVER] Starting M3U Player Server")
 print(f"[SERVER] ffmpeg command: {ffmpeg_cmd}")
-print(f"[SERVER] Recordings directory: {RECORDINGS_DIR.absolute()}")
 print(f"[SERVER] PORT: {PORT}")
 
 # In-memory party and chat storage
@@ -62,6 +61,8 @@ RECORDINGS_DIR = Path('recordings')
 RECORDINGS_DIR.mkdir(exist_ok=True)
 ACTIVE_RECORDINGS = {}  # {filename: {"process": Process, "channel": str, "url": str, "startTime": timestamp}}
 RECORDED_FILES = {}  # {filename: {"channel": str, "size": bytes, "duration": seconds, "timestamp": float}}
+
+print(f"[SERVER] Recordings directory: {RECORDINGS_DIR.absolute()}")
 
 def generate_party_code():
     """Generate a random 6-character party code"""
