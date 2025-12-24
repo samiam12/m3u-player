@@ -597,11 +597,40 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 chunk_size = 8192
                 bytes_sent = 0
                 first_chunk = True
+                no_data_timeout = 10  # seconds
+                last_data_time = time.time()
                 
                 while True:
                     chunk = process.stdout.read(chunk_size)
-                    if not chunk:
+                    
+                    # Check for ffmpeg process errors
+                    if process.poll() is not None:
+                        print(f"[TRANSCODE] ffmpeg process ended prematurely with code {process.returncode}", flush=True)
+                        stderr_output = process.stderr.read(1000).decode('utf-8', errors='ignore')
+                        if stderr_output:
+                            print(f"[TRANSCODE] ffmpeg stderr: {stderr_output}", flush=True)
+                        if bytes_sent == 0:
+                            # No data sent yet, ffmpeg failed immediately - fall back to direct proxy
+                            print("[TRANSCODE] ffmpeg failed before sending data, falling back to direct proxy", flush=True)
+                            process.kill()
+                            return self.handle_proxy_stream(target_url)
                         break
+                    
+                    if not chunk:
+                        # No data available
+                        if time.time() - last_data_time > no_data_timeout:
+                            print(f"[TRANSCODE] No data for {no_data_timeout}s, likely dead stream", flush=True)
+                            if bytes_sent == 0:
+                                print("[TRANSCODE] No data sent, falling back to direct proxy", flush=True)
+                                process.kill()
+                                return self.handle_proxy_stream(target_url)
+                            break
+                        # Short sleep to avoid busy loop
+                        import time as time_module
+                        time_module.sleep(0.01)
+                        continue
+                    
+                    last_data_time = time.time()
                     
                     if first_chunk:
                         print(f"[TRANSCODE] First chunk received ({len(chunk)} bytes)", flush=True)
@@ -625,7 +654,7 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 print(f"[TRANSCODE] Stream complete, sent {bytes_sent} bytes", flush=True)
                 
             except BrokenPipeError:
-                print(f"[TRANSCODE] Client disconnected after {bytes_sent} bytes", flush=True)
+                print(f"[TRANSCODE] Client disconnected", flush=True)
                 
             except Exception as e:
                 error_msg = str(e)
@@ -638,18 +667,9 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 except:
                     pass
                 
-                # Return proper error response
-                self.send_response(502)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                
-                error_response = json.dumps({
-                    'error': 'transcode_failed',
-                    'details': 'FFmpeg processing failed',
-                    'message': error_msg[:200]
-                })
-                self.wfile.write(error_response.encode())
+                # If ffmpeg fails completely, fall back to direct proxy
+                print("[TRANSCODE] ffmpeg failed, falling back to direct proxy", flush=True)
+                return self.handle_proxy_stream(target_url)
                 
         except Exception as e:
             print(f"[TRANSCODE] Handler error: {str(e)}", flush=True)
