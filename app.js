@@ -1928,6 +1928,11 @@ class M3UPlayerApp {
                 // Attach to video element
                 this.mpegtsPlayer.attachMediaElement(this.videoPlayer);
                 
+                // Restore audio settings immediately for ALL streams (not just reconnects)
+                this.videoPlayer.volume = this.volume / 100;
+                this.videoPlayer.muted = false;
+                console.log('Audio initialized: volume=' + this.volume + '%, muted=false');
+                
                 // Load and play
                 this.mpegtsPlayer.load();
                 
