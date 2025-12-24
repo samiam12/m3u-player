@@ -267,15 +267,14 @@ class M3UPlayerApp {
             
             console.warn(`[GLOBAL ERROR] ${errorType}: ${errorMsg}`);
             
-            // Handle SourceBuffer errors specifically
-            if (errorMsg.toLowerCase().includes('sourcebuffer') || errorMsg.toLowerCase().includes('removed from the parent media source') || errorMsg.toLowerCase().includes('invalidstateerror')) {
-                console.error('[SourceBuffer Error] GLOBAL CATCH - triggering fallback recovery');
-                // Try to recover by switching to a safe stream or showing message
+            // Handle audio/SourceBuffer errors specifically
+            if (errorMsg.toLowerCase().includes('sourcebuffer') || errorMsg.toLowerCase().includes('removed from the parent media source') || errorMsg.toLowerCase().includes('invalidstateerror') || errorMsg.toLowerCase().includes('unhandled error') || errorMsg.toLowerCase().includes('appendinitsegment')) {
+                console.error('[AUDIO/BUFFER ERROR] GLOBAL CATCH - triggering fallback recovery');
+                // Try to recover by reloading the current stream
                 try {
-                    // Trigger a global recovery attempt
                     if (this.currentChannel) {
                         console.log('Attempting global fallback recovery for:', this.currentChannel);
-                        setTimeout(() => this.playChannel(this.currentChannel), 1000);
+                        setTimeout(() => this.playChannel(this.currentChannel), 1500);
                     }
                 } catch (e) {
                     console.error('Global recovery failed:', e);
@@ -1973,6 +1972,17 @@ class M3UPlayerApp {
                 // Restore audio settings immediately for ALL streams (not just reconnects)
                 this.videoPlayer.volume = this.volume / 100;
                 this.videoPlayer.muted = false;
+                
+                // Extra safety: ensure audio is not blocked by browser autoplay policy
+                // Try to play immediately to force audio initialization
+                this.videoPlayer.play().then(() => {
+                    console.log('✓ Autoplay started successfully');
+                }).catch(() => {
+                    console.warn('⚠️ Autoplay blocked, will enable muted playback');
+                    this.videoPlayer.muted = true;
+                    this.videoPlayer.play().catch(e => console.warn('Even muted playback failed:', e));
+                });
+                
                 console.log('Audio initialized: volume=' + this.volume + '%, muted=false');
                 
                 // Load and play
@@ -1991,6 +2001,41 @@ class M3UPlayerApp {
                         const combined = `${detailStr} ${infoStr}`.toLowerCase();
 
                         console.log('Stream error detected:', { errorType, detailStr, infoStr });
+
+                        // Specific recovery for audio initialization failures
+                        if (_recoveryAttempts < maxRecoveryAttempts && (combined.includes('appendinitsegment') || combined.includes('unhandled error') || combined.includes('audio'))) {
+                            console.error(`❌ Audio initialization failed (recovery attempt ${_recoveryAttempts + 1}/${maxRecoveryAttempts})`);
+                            _recoveryAttempts++;
+                            
+                            // Destroy and retry with fresh start
+                            try {
+                                if (this.mpegtsPlayer) {
+                                    this.mpegtsPlayer.destroy();
+                                    this.mpegtsPlayer = null;
+                                }
+                                
+                                setTimeout(() => {
+                                    try {
+                                        console.log('Audio Recovery: Creating fresh player...');
+                                        const newConfig = this.getMpegtsPlayerConfig(url, profile);
+                                        this.mpegtsPlayer = mpegts.createPlayer(newConfig);
+                                        this.mpegtsPlayer.attachMediaElement(this.videoPlayer);
+                                        
+                                        // Force audio to be enabled
+                                        this.videoPlayer.volume = this.volume / 100;
+                                        this.videoPlayer.muted = false;
+                                        console.log('Audio Recovery: FORCING audio - volume=' + this.volume + '%, muted=false');
+                                        
+                                        this.mpegtsPlayer.load();
+                                    } catch (e) {
+                                        console.error('Audio recovery failed:', e);
+                                    }
+                                }, 500);
+                            } catch (e) {
+                                console.error('Audio recovery attempt failed:', e);
+                            }
+                            return;
+                        }
 
                         // Specific recovery for SourceBuffer removed (common codec/stream issues)
                         // This can happen on first attempt or after reconnect
@@ -2138,13 +2183,24 @@ class M3UPlayerApp {
                 
                 // Play when ready
                 setTimeout(() => {
+                    // Ensure audio is enabled right before playing
+                    this.videoPlayer.volume = this.volume / 100;
+                    this.videoPlayer.muted = false;
+                    
                     this.videoPlayer.play().then(() => {
-                        console.log('MPEG-TS playback started successfully!');
+                        console.log('✓ MPEG-TS playback started successfully with audio!');
                         resolveOnce();
                     }).catch(err => {
-                        console.warn('Autoplay failed, but stream is ready:', err);
-                        this.videoPlayer.muted = false;
+                        console.warn('Autoplay with audio failed, trying muted:', err);
+                        // Only mute as a fallback if autoplay policy requires it
+                        this.videoPlayer.muted = true;
                         this.videoPlayer.play().then(() => {
+                            // Try to unmute after a brief delay
+                            setTimeout(() => {
+                                this.videoPlayer.muted = false;
+                                this.videoPlayer.volume = this.volume / 100;
+                                console.log('Audio unmuted after muted playback start');
+                            }, 500);
                             resolveOnce();
                         }).catch(() => {
                             resolveOnce(); // Stream is ready even if autoplay fails
