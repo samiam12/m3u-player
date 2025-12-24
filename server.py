@@ -440,7 +440,11 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # Start recording in background thread
                 def record_stream():
                     try:
+                        # Record the actual start time when the thread begins
+                        actual_start_time = int(time.time())
+                        
                         print(f"[RECORDING] Starting: {filename} from {channel}", flush=True)
+                        print(f"[RECORDING] Actual start timestamp: {actual_start_time}", flush=True)
                         print(f"[RECORDING] URL: {url}", flush=True)
                         
                         # Use requests to download the stream directly
@@ -479,15 +483,15 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             print(f"[RECORDING] Request error: {str(e)}", flush=True)
 
                         
-                        # Store recording info
+                        # Store recording info with actual start time
                         if filepath.exists():
                             size = filepath.stat().st_size
-                            duration = int(time.time()) - timestamp
+                            duration = int(time.time()) - actual_start_time
                             RECORDED_FILES[filename] = {
                                 'channel': channel,
                                 'size': size,
                                 'duration': duration,
-                                'timestamp': timestamp
+                                'timestamp': actual_start_time
                             }
                             print(f"[RECORDING] Complete: {filename} ({size} bytes, {duration}s)", flush=True)
                         else:

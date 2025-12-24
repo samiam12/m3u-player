@@ -1093,7 +1093,7 @@ class M3UPlayerApp {
             // Optimize for better buffering
             enableWorker: true,
             enableStashBuffer: true, // Enable stash buffer for better streaming
-            stashInitialSize: 512, // Large cache buffer for smooth playback
+            stashInitialSize: 2048, // MASSIVE cache buffer for smooth playback (was 512, now 2048)
             autoCleanupSourceBuffer: true,
             accurateSeek: false,
             seekType: 'range', // Use range requests for better performance
@@ -1101,17 +1101,19 @@ class M3UPlayerApp {
             seekParamEnd: 'bend',
             rangeLoadZeroStart: false,
             liveSyncLatencyChasing: true, // Chase latency for live streams
-            liveSyncLatency: 1, // Reduced from 1.5 for lower latency
-            liveMaxLatencyDuration: 2, // Reduced from 3
+            liveSyncLatency: 2, // Increased from 1 to allow more buffering
+            liveMaxLatencyDuration: 5, // Increased from 2 to allow more buffering
             liveDurationInfinity: true,
-            liveBackBufferLength: 0 // No back buffer for live streams
+            liveBackBufferLength: 300, // Increased from 0 to keep back buffer for seeking
+            videoBufferLength: 5000, // Large video buffer
+            audioBufferLength: 5000  // Large audio buffer
         };
 
         if (profileName === 'lowlatency') {
             return {
                 ...baseDefault,
-                enableStashBuffer: false,
-                stashInitialSize: 64,
+                enableStashBuffer: true,
+                stashInitialSize: 512,
                 liveSyncLatency: 1.0,
                 liveMaxLatencyDuration: 2
             };
@@ -1121,9 +1123,9 @@ class M3UPlayerApp {
             return {
                 ...baseDefault,
                 enableStashBuffer: true,
-                stashInitialSize: 512,
-                liveSyncLatency: 3.0,
-                liveMaxLatencyDuration: 7
+                stashInitialSize: 2048,
+                liveSyncLatency: 5.0,
+                liveMaxLatencyDuration: 10
             };
         }
 
@@ -3052,6 +3054,21 @@ ${url}
                 </div>
             `;
         }).join('');
+        
+        // Set up auto-refresh for EPG when current program ends
+        if (this.epgRefreshTimer) {
+            clearTimeout(this.epgRefreshTimer);
+        }
+        
+        // Find the current program to know when to refresh
+        const currentProgram = upcomingPrograms.find(prog => prog.start <= now && prog.stop >= now);
+        if (currentProgram) {
+            const timeUntilNextProgram = currentProgram.stop - now + 1000; // 1 second after program ends
+            this.epgRefreshTimer = setTimeout(() => {
+                // Auto-refresh EPG when current program ends
+                this.updateEPGDisplay(channel);
+            }, timeUntilNextProgram);
+        }
     }
 
     showOverlay() {
