@@ -267,8 +267,16 @@ class M3UPlayerApp {
             
             console.warn(`[GLOBAL ERROR] ${errorType}: ${errorMsg}`);
             
+            // Handle audio initialization failures - suppress these errors
+            // Some audio codecs (like ec-3) may not be supported but video can still play
+            if (errorMsg.toLowerCase().includes('unhandled error') || errorMsg.toLowerCase().includes('appendinitsegment')) {
+                console.warn('[AUDIO CODEC] Suppressing audio initialization error - video may continue');
+                event.preventDefault(); // Prevent the unhandled rejection from crashing
+                return; // Don't trigger recovery for codec errors
+            }
+            
             // Handle audio/SourceBuffer errors specifically
-            if (errorMsg.toLowerCase().includes('sourcebuffer') || errorMsg.toLowerCase().includes('removed from the parent media source') || errorMsg.toLowerCase().includes('invalidstateerror') || errorMsg.toLowerCase().includes('unhandled error') || errorMsg.toLowerCase().includes('appendinitsegment')) {
+            if (errorMsg.toLowerCase().includes('sourcebuffer') || errorMsg.toLowerCase().includes('removed from the parent media source') || errorMsg.toLowerCase().includes('invalidstateerror')) {
                 console.error('[AUDIO/BUFFER ERROR] GLOBAL CATCH - triggering fallback recovery');
                 // Try to recover by reloading the current stream
                 try {
@@ -2003,36 +2011,41 @@ class M3UPlayerApp {
                         console.log('Stream error detected:', { errorType, detailStr, infoStr });
 
                         // Specific recovery for audio initialization failures
-                        if (_recoveryAttempts < maxRecoveryAttempts && (combined.includes('appendinitsegment') || combined.includes('unhandled error') || combined.includes('audio'))) {
-                            console.error(`❌ Audio initialization failed (recovery attempt ${_recoveryAttempts + 1}/${maxRecoveryAttempts})`);
+                        if (_recoveryAttempts < maxRecoveryAttempts && (combined.includes('appendinitsegment') || combined.includes('unhandled error'))) {
+                            console.error(`❌ Audio SourceBuffer initialization failed (recovery attempt ${_recoveryAttempts + 1}/${maxRecoveryAttempts})`);
                             _recoveryAttempts++;
                             
-                            // Destroy and retry with fresh start
-                            try {
-                                if (this.mpegtsPlayer) {
-                                    this.mpegtsPlayer.destroy();
-                                    this.mpegtsPlayer = null;
-                                }
-                                
-                                setTimeout(() => {
-                                    try {
-                                        console.log('Audio Recovery: Creating fresh player...');
-                                        const newConfig = this.getMpegtsPlayerConfig(url, profile);
-                                        this.mpegtsPlayer = mpegts.createPlayer(newConfig);
-                                        this.mpegtsPlayer.attachMediaElement(this.videoPlayer);
-                                        
-                                        // Force audio to be enabled
-                                        this.videoPlayer.volume = this.volume / 100;
-                                        this.videoPlayer.muted = false;
-                                        console.log('Audio Recovery: FORCING audio - volume=' + this.volume + '%, muted=false');
-                                        
-                                        this.mpegtsPlayer.load();
-                                    } catch (e) {
-                                        console.error('Audio recovery failed:', e);
+                            // Audio codec may be unsupported (e.g., ec-3/Dolby)
+                            // Try with a fresh player - sometimes retry helps
+                            if (_recoveryAttempts === 1) {
+                                console.log('First audio error - retrying with fresh player...');
+                                try {
+                                    if (this.mpegtsPlayer) {
+                                        this.mpegtsPlayer.destroy();
+                                        this.mpegtsPlayer = null;
                                     }
-                                }, 500);
-                            } catch (e) {
-                                console.error('Audio recovery attempt failed:', e);
+                                    
+                                    setTimeout(() => {
+                                        try {
+                                            const newConfig = this.getMpegtsPlayerConfig(url, profile);
+                                            this.mpegtsPlayer = mpegts.createPlayer(newConfig);
+                                            this.mpegtsPlayer.attachMediaElement(this.videoPlayer);
+                                            this.videoPlayer.volume = this.volume / 100;
+                                            this.videoPlayer.muted = false;
+                                            this.mpegtsPlayer.load();
+                                            console.log('Fresh player loaded for audio retry');
+                                        } catch (e) {
+                                            console.error('Fresh player load failed:', e);
+                                        }
+                                    }, 500);
+                                } catch (e) {
+                                    console.error('Audio recovery attempt failed:', e);
+                                }
+                            } else {
+                                // After first retry fails, just continue with muted audio
+                                console.warn('⚠️ Audio codec appears unsupported, continuing with video only');
+                                this.videoPlayer.muted = true;
+                                // DON'T return here - let the stream continue
                             }
                             return;
                         }
