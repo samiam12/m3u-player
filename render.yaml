@@ -3,6 +3,7 @@ services:
     name: m3u-player
     runtime: python3
     region: oregon
+    buildCommand: pip install -r requirements.txt
     startCommand: python server.py
     envVars:
       - key: M3U_PLAYER_NO_BROWSER
