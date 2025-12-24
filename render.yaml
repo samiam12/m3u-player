@@ -4,10 +4,12 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     region: oregon
-    startCommand: python server.py
     healthCheckPath: /
     envVars:
       - key: M3U_PLAYER_NO_BROWSER
         value: "1"
       - key: PORT
         value: "10000"
+    routes:
+      - type: http
+        path: /
