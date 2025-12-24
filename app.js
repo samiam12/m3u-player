@@ -1931,8 +1931,11 @@ class M3UPlayerApp {
                 // Load and play
                 this.mpegtsPlayer.load();
                 
-                // Handle errors - with automatic recovery for SourceBuffer removed
+                // Handle errors - with automatic recovery and auto-reconnect
                 let _recoveryAttempted = false;
+                let _reconnectAttempts = 0;
+                const maxReconnectAttempts = 5;
+                
                 this.mpegtsPlayer.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
                     try {
                         const detailStr = (errorDetail && (errorDetail.msg || errorDetail.message || errorDetail.toString())) || '';
@@ -1974,7 +1977,26 @@ class M3UPlayerApp {
                         }
 
                         if (errorType === mpegts.ErrorTypes.NETWORK_ERROR) {
-                            console.warn('Network issue (stream may still work):', errorDetail);
+                            console.warn('Network error - attempting reconnect:', errorDetail);
+                            // Network error - try to reconnect
+                            if (_reconnectAttempts < maxReconnectAttempts) {
+                                _reconnectAttempts++;
+                                const retryDelay = Math.min(1000 * _reconnectAttempts, 10000);
+                                console.log(`Reconnect attempt ${_reconnectAttempts}/${maxReconnectAttempts} in ${retryDelay}ms`);
+                                setTimeout(() => {
+                                    try {
+                                        if (this.mpegtsPlayer) {
+                                            this.mpegtsPlayer.destroy();
+                                        }
+                                        this.playChannel(channel);
+                                    } catch (e) {
+                                        console.error('Reconnect failed:', e);
+                                    }
+                                }, retryDelay);
+                            } else {
+                                console.error('Max reconnect attempts reached');
+                                this.showToast('Stream connection failed, please reload', 'error');
+                            }
                         } else if (errorType === mpegts.ErrorTypes.MEDIA_ERROR) {
                             console.warn('Media issue (stream may still work):', errorDetail);
                         } else {
@@ -2312,6 +2334,41 @@ ${url}
             this.stopRecording();
         } else {
             this.startRecording();
+        }
+    }
+
+    syncToLatestPlayback() {
+        try {
+            if (!this.mpegtsPlayer) {
+                this.showToast('No stream currently playing', 'warn');
+                return;
+            }
+
+            // Jump to latest live position by seeking to end of buffer
+            // This reduces latency and skips built-up buffering lag
+            const currentTime = this.videoPlayer.currentTime;
+            const duration = this.videoPlayer.duration;
+            
+            // For live streams, duration is Infinity - seek to current buffered position
+            if (duration === Infinity) {
+                // Get the maximum buffered time
+                if (this.videoPlayer.buffered && this.videoPlayer.buffered.length > 0) {
+                    const maxBuffered = this.videoPlayer.buffered.end(this.videoPlayer.buffered.length - 1);
+                    if (maxBuffered > currentTime + 2) {  // Only jump if significantly ahead
+                        this.videoPlayer.currentTime = maxBuffered - 1;  // Stay slightly behind live edge
+                        this.showToast('Synced to latest (live edge)', 'success');
+                    } else {
+                        this.showToast('Already at latest playback', 'info');
+                    }
+                }
+            } else {
+                // For recorded content, jump to end
+                this.videoPlayer.currentTime = Math.max(0, duration - 2);
+                this.showToast('Synced to latest', 'success');
+            }
+        } catch (e) {
+            console.error('Error syncing to latest:', e);
+            this.showToast('Failed to sync to latest', 'error');
         }
     }
 
@@ -3138,6 +3195,9 @@ ${url}
                     <button class="video-control-btn" id="videoRecordingsBtn" title="View Recordings">
                         🎞️
                     </button>
+                    <button class="video-control-btn" id="videoSyncLatestBtn" title="Sync to Latest (Skip Buffering)">
+                        ⚡
+                    </button>
                 </div>
                 <div class="video-control-right">
                     <button class="video-control-btn" id="videoFullscreenBtn" title="Fullscreen">
@@ -3195,6 +3255,10 @@ ${url}
         }
         if (recordingsBtn) {
             recordingsBtn.addEventListener('click', () => this.showRecordingsModal());
+        }
+        const syncLatestBtn = document.getElementById('videoSyncLatestBtn');
+        if (syncLatestBtn) {
+            syncLatestBtn.addEventListener('click', () => this.syncToLatestPlayback());
         }
         if (fullscreenBtn) {
             fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
@@ -3590,16 +3654,42 @@ ${url}
         if (!this.partyCode) return;
         
         try {
+            const wasHost = this.isPartyHost;
+            const partyCode = this.partyCode;
+            
             // Stop all sync loops FIRST
             this.stopPartySyncLoop();
+            
+            // If host ending party, notify all members to disconnect
+            if (wasHost) {
+                try {
+                    // Quick hack: update party state to empty channel to signal disconnect
+                    await fetch('/party/update', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            code: partyCode,
+                            channel: 'PARTY_ENDED',
+                            playing: false,
+                            currentTime: 0
+                        })
+                    });
+                } catch (e) {
+                    console.warn('Could not notify members of party end:', e);
+                }
+            }
             
             // Pause video to prevent audio loop
             if (this.videoPlayer) {
                 this.videoPlayer.pause();
+                // Clear video source if member
+                if (!wasHost) {
+                    this.videoPlayer.style.display = 'none';
+                }
             }
             
             // Notify server
-            await fetch(`/party/leave?code=${this.partyCode}`);
+            await fetch(`/party/leave?code=${partyCode}`);
             
             // Clear party state
             this.hideChatWidget();
@@ -3611,7 +3701,17 @@ ${url}
             
             // Update UI
             this.updatePartyUI();
-            this.showToast('Left party', 'info');
+            this.showToast(wasHost ? 'Ended party' : 'Left party', 'info');
+            
+            // Show message to members that party ended
+            if (!wasHost) {
+                setTimeout(() => {
+                    const msg = document.createElement('div');
+                    msg.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #333; color: #fff; padding: 30px; border-radius: 8px; text-align: center; z-index: 10000; font-size: 18px;';
+                    msg.innerHTML = '<p>Host has ended the party</p><button class="btn-secondary" style="margin-top: 15px;" onclick="this.parentElement.remove()">Close</button>';
+                    document.body.appendChild(msg);
+                }, 100);
+            }
         } catch (e) {
             console.error('Error leaving party:', e);
         }
@@ -3691,6 +3791,13 @@ ${url}
                     const data = await response.json();
                     
                     if (data.success) {
+                        // Check if host ended party
+                        if (data.channel === 'PARTY_ENDED') {
+                            console.log('[PARTY] Host ended the party');
+                            this.leaveParty();
+                            return;
+                        }
+                        
                         // Switch channel if host changed it
                         if (data.channel && data.channel !== lastSeenChannel) {
                             lastSeenChannel = data.channel;
