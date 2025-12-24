@@ -430,14 +430,21 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             # Decode URL
             target_url = urllib.parse.unquote(target_url)
             
-            print(f"[STREAM] Starting audio transcode for: {target_url[:80]}...")
+            print(f"[STREAM] Transcode request for: {target_url[:80]}...", flush=True)
             
             # Check if ffmpeg is available
+            ffmpeg_available = False
             try:
-                subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=5)
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                print("[STREAM] ffmpeg not available, falling back to direct stream")
-                # Fallback to direct proxy
+                result = subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=5)
+                ffmpeg_available = result.returncode == 0
+                print(f"[STREAM] ffmpeg available: {ffmpeg_available}", flush=True)
+            except Exception as e:
+                print(f"[STREAM] ffmpeg check failed: {e}", flush=True)
+                ffmpeg_available = False
+            
+            # If ffmpeg not available, fall back to direct proxy
+            if not ffmpeg_available:
+                print("[STREAM] ffmpeg unavailable, using direct proxy stream", flush=True)
                 return self.handle_proxy_stream(target_url)
             
             # Use ffmpeg to:
@@ -448,16 +455,20 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             
             ffmpeg_cmd = [
                 'ffmpeg',
+                '-hide_banner',
+                '-loglevel', 'error',
                 '-i', target_url,                    # Input stream
                 '-c:v', 'copy',                      # Copy video codec (no transcode)
                 '-c:a', 'aac',                       # Transcode audio to AAC
                 '-b:a', '128k',                      # AAC bitrate
                 '-f', 'mpegts',                      # Output format
-                'pipe:1'                             # Output to stdout
+                '-'                                  # Output to stdout
             ]
             
+            print(f"[STREAM] Starting ffmpeg: {' '.join(ffmpeg_cmd[:5])}...", flush=True)
+            
             try:
-                # Start ffmpeg process
+                # Start ffmpeg process with proper error handling
                 process = subprocess.Popen(
                     ffmpeg_cmd,
                     stdout=subprocess.PIPE,
@@ -465,7 +476,7 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     bufsize=65536  # 64KB buffer
                 )
                 
-                print("[STREAM] ffmpeg process started, streaming to client...")
+                print("[STREAM] ffmpeg process started, streaming to client...", flush=True)
                 
                 # Send HTTP response headers
                 self.send_response(200)
@@ -478,16 +489,22 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 # Stream chunks from ffmpeg to client
                 chunk_size = 8192
                 bytes_sent = 0
+                first_chunk = True
+                
                 while True:
                     chunk = process.stdout.read(chunk_size)
                     if not chunk:
                         break
                     
+                    if first_chunk:
+                        print(f"[STREAM] First chunk received ({len(chunk)} bytes)", flush=True)
+                        first_chunk = False
+                    
                     try:
                         self.wfile.write(chunk)
                         bytes_sent += len(chunk)
                     except BrokenPipeError:
-                        print("[STREAM] Client disconnected after {} bytes".format(bytes_sent))
+                        print(f"[STREAM] Client disconnected after {bytes_sent} bytes", flush=True)
                         break
                 
                 # Clean up process
@@ -495,12 +512,15 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 try:
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
+                    print("[STREAM] ffmpeg timeout, killing process", flush=True)
                     process.kill()
                 
-                print(f"[STREAM] Transcoding complete, sent {bytes_sent} bytes")
+                print(f"[STREAM] Transcoding complete, sent {bytes_sent} bytes", flush=True)
                 
             except Exception as e:
-                print(f"[STREAM] ffmpeg error: {str(e)}")
+                print(f"[STREAM] ffmpeg error: {str(e)}", flush=True)
+                import traceback
+                traceback.print_exc()
                 try:
                     process.kill()
                 except:
@@ -508,7 +528,7 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_error(502, f"Stream transcode failed: {str(e)}")
                 
         except Exception as e:
-            print(f"[STREAM] Handler error: {str(e)}")
+            print(f"[STREAM] Handler error: {str(e)}", flush=True)
             import traceback
             traceback.print_exc()
             self.send_error(500, f"Stream error: {str(e)}")
