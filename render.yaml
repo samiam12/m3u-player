@@ -2,11 +2,13 @@ services:
   - type: web
     name: m3u-player
     runtime: docker
+    dockerfilePath: ./Dockerfile
     region: oregon
+    buildCommand: echo "Docker build handles all dependencies"
     startCommand: python server.py
+    healthCheckPath: /
     envVars:
       - key: M3U_PLAYER_NO_BROWSER
         value: "1"
-    routes:
-      - type: http
-        path: /
+      - key: PORT
+        value: "10000"
