@@ -416,25 +416,29 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error(500, f"Proxy error: {str(e)}")
 
     def handle_stream_transcode(self):
-        """Stream with audio codec transcoding (E-AC-3 → AAC)
+        """Stream with audio codec transcoding (E-AC-3 → AAC) + HEVC detection
         
         Architecture:
         - Input: MPEG-TS stream (may have E-AC-3, broken timestamps, etc)
-        - FFmpeg: Transcodes audio E-AC-3 → AAC, copies video untouched
+        - Probe: Detect video codec (H.264 vs HEVC)
+        - FFmpeg: Transcode audio E-AC-3 → AAC, handle video based on codec
         - Output: MPEG-TS with AAC audio (Chrome-safe, mpegts.js compatible)
         
+        Video codec handling:
+        - H.264: Copy video as-is (fast, no quality loss)
+        - HEVC: Auto-transcode to H.264 (libx264 veryfast preset)
+        
+        Audio: Always transcode to AAC (browser requirement)
+        
         Key flags for IPTV stability:
-        - genpts+igndts: Generate missing PTS, ignore broken DTS (IPTV feeds often have these)
-        - reconnect: Auto-reconnect on connection loss
-        - ac 2: Force stereo audio (prevents some glitches)
+        - genpts+igndts: Generate missing PTS, ignore broken DTS
+        - reconnect: Auto-reconnect on timeout
+        - ac 2: Force stereo audio
         
-        Important limitations:
-        - MPEG-TS is less stable than HLS for lossy IPTV feeds
-        - HEVC/H.265 video will still not play (not a codec issue for Chrome)
-        - FFmpeg must be available on server, or fallback to direct proxy
-        - Some IPTV sources are just unreliable and may fail anyway
-        
-        Fallback: If FFmpeg unavailable, uses direct proxy (audio not transcoded)
+        Error responses:
+        - 415: Unsupported codec (only if codec detection fails)
+        - 502: FFmpeg crash or transcode error
+        - 503: FFmpeg unavailable on server
         """
         try:
             # Parse query parameters
@@ -451,50 +455,106 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             
             print(f"[TRANSCODE] Request for: {target_url[:80]}...", flush=True)
             
-            # Check if ffmpeg is available
+            # Check if ffmpeg/ffprobe are available
             ffmpeg_available = False
+            ffprobe_available = False
             try:
                 result = subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=5)
                 ffmpeg_available = result.returncode == 0
-                print(f"[TRANSCODE] ffmpeg available: {ffmpeg_available}", flush=True)
+                result = subprocess.run(['ffprobe', '-version'], capture_output=True, timeout=5)
+                ffprobe_available = result.returncode == 0
+                print(f"[TRANSCODE] ffmpeg: {ffmpeg_available}, ffprobe: {ffprobe_available}", flush=True)
             except Exception as e:
-                print(f"[TRANSCODE] ffmpeg check failed: {e}", flush=True)
-                ffmpeg_available = False
+                print(f"[TRANSCODE] Tool check failed: {e}", flush=True)
             
             # If ffmpeg not available, fall back to direct proxy
             if not ffmpeg_available:
                 print("[TRANSCODE] ffmpeg unavailable, using direct proxy stream", flush=True)
                 return self.handle_proxy_stream(target_url)
             
-            # Use ffmpeg to:
-            # 1. Read MPEG-TS stream from source
-            # 2. Copy video stream as-is (no transcoding)
-            # 3. Transcode audio from E-AC-3/any codec to AAC
-            # 4. Output as MPEG-TS (compatible with mpegts.js)
+            # Detect video codec using ffprobe (if available)
+            video_codec = 'h264'  # Default assumption
+            needs_video_transcode = False
             
-            ffmpeg_cmd = [
-                'ffmpeg',
-                '-reconnect', '1',                   # Auto-reconnect on timeout
-                '-reconnect_streamed', '1',          # Reconnect for streaming protocols
-                '-reconnect_delay_max', '2',         # Max 2s between reconnects
-                '-fflags', '+genpts+igndts',         # Generate PTS, ignore DTS errors (IPTV stability)
-                '-flags', 'low_delay',               # Low latency mode
-                '-hide_banner',
-                '-loglevel', 'error',
-                '-i', target_url,                    # Input stream URL
-                '-c:v', 'copy',                      # Copy video (no transcode)
-                '-c:a', 'aac',                       # Transcode audio to AAC
-                '-b:a', '128k',                      # AAC bitrate
-                '-ac', '2',                          # Force stereo output
-                '-f', 'mpegts',                      # Output as MPEG-TS (not HLS)
-                '-'                                  # Output to stdout
-            ]
+            if ffprobe_available:
+                try:
+                    print("[TRANSCODE] Probing stream codec...", flush=True)
+                    probe_cmd = [
+                        'ffprobe',
+                        '-v', 'error',
+                        '-select_streams', 'v:0',
+                        '-show_entries', 'stream=codec_name',
+                        '-of', 'json',
+                        '-timeout', '10',  # 10s timeout to avoid stalls on dead feeds
+                        target_url
+                    ]
+                    result = subprocess.run(probe_cmd, capture_output=True, timeout=15, text=True)
+                    
+                    if result.returncode == 0:
+                        try:
+                            probe_data = json.loads(result.stdout)
+                            if probe_data.get('streams') and len(probe_data['streams']) > 0:
+                                video_codec = probe_data['streams'][0].get('codec_name', 'h264').lower()
+                                print(f"[TRANSCODE] Detected codec: {video_codec}", flush=True)
+                                needs_video_transcode = video_codec == 'hevc'
+                        except json.JSONDecodeError:
+                            print("[TRANSCODE] Failed to parse probe output, assuming H.264", flush=True)
+                    else:
+                        print(f"[TRANSCODE] Probe failed: {result.stderr[:200]}, assuming H.264", flush=True)
+                        
+                except subprocess.TimeoutExpired:
+                    print("[TRANSCODE] Probe timeout, assuming H.264", flush=True)
+                except Exception as e:
+                    print(f"[TRANSCODE] Probe error: {e}, assuming H.264", flush=True)
             
-            print(f"[TRANSCODE] Starting ffmpeg (E-AC-3 → AAC)...", flush=True)
+            # Build ffmpeg command based on detected codec
+            video_codec_opt = '-c:v'
+            video_codec_arg = 'copy'
             
-            # Optional: Detect video codec to warn about HEVC
-            # (HEVC/H.265 not supported by Chrome - would need re-encode)
-            # Skip this for now to keep latency low, but useful for debugging
+            if needs_video_transcode:
+                print("[TRANSCODE] HEVC detected → re-encoding video (libx264, veryfast)", flush=True)
+                video_codec_arg = 'libx264'
+                # Additional options for H.264 encoding
+                ffmpeg_cmd = [
+                    'ffmpeg',
+                    '-reconnect', '1',
+                    '-reconnect_streamed', '1',
+                    '-reconnect_delay_max', '2',
+                    '-fflags', '+genpts+igndts',
+                    '-flags', 'low_delay',
+                    '-hide_banner',
+                    '-loglevel', 'error',
+                    '-i', target_url,
+                    '-c:v', 'libx264',                # Transcode video to H.264
+                    '-preset', 'veryfast',            # Balance speed vs quality
+                    '-tune', 'zerolatency',           # Optimize for low latency
+                    '-c:a', 'aac',
+                    '-b:a', '128k',
+                    '-ac', '2',
+                    '-f', 'mpegts',
+                    '-'
+                ]
+            else:
+                # H.264: copy video, only transcode audio
+                ffmpeg_cmd = [
+                    'ffmpeg',
+                    '-reconnect', '1',
+                    '-reconnect_streamed', '1',
+                    '-reconnect_delay_max', '2',
+                    '-fflags', '+genpts+igndts',
+                    '-flags', 'low_delay',
+                    '-hide_banner',
+                    '-loglevel', 'error',
+                    '-i', target_url,
+                    '-c:v', 'copy',                   # Copy video (no transcode)
+                    '-c:a', 'aac',                    # Transcode audio to AAC
+                    '-b:a', '128k',
+                    '-ac', '2',
+                    '-f', 'mpegts',
+                    '-'
+                ]
+            
+            print(f"[TRANSCODE] Starting ffmpeg...", flush=True)
             
             try:
                 # Start ffmpeg process
@@ -546,21 +606,49 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 
                 print(f"[TRANSCODE] Stream complete, sent {bytes_sent} bytes", flush=True)
                 
+            except BrokenPipeError:
+                print(f"[TRANSCODE] Client disconnected after {bytes_sent} bytes", flush=True)
+                
             except Exception as e:
-                print(f"[TRANSCODE] ffmpeg error: {str(e)}", flush=True)
+                error_msg = str(e)
+                print(f"[TRANSCODE] ffmpeg error: {error_msg}", flush=True)
                 import traceback
                 traceback.print_exc()
+                
                 try:
                     process.kill()
                 except:
                     pass
-                self.send_error(502, f"Transcode failed: {str(e)}")
+                
+                # Return proper error response
+                self.send_response(502)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                
+                error_response = json.dumps({
+                    'error': 'transcode_failed',
+                    'details': 'FFmpeg processing failed',
+                    'message': error_msg[:200]
+                })
+                self.wfile.write(error_response.encode())
                 
         except Exception as e:
             print(f"[TRANSCODE] Handler error: {str(e)}", flush=True)
             import traceback
             traceback.print_exc()
-            self.send_error(500, f"Stream error: {str(e)}")
+            
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            
+            error_response = json.dumps({
+                'error': 'server_error',
+                'details': 'Internal server error',
+                'message': str(e)[:200]
+            })
+            self.wfile.write(error_response.encode())
 
     def handle_proxy_stream(self, target_url):
         """Fallback: proxy stream directly without transcoding"""

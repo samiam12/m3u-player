@@ -1948,6 +1948,60 @@ class M3UPlayerApp {
         return url;
     }
     
+    /**
+     * Validate transcode endpoint response headers for HTTP errors
+     * Returns error details if server returned error, null if OK
+     */
+    async validateTranscodeResponse(transcodedUrl) {
+        try {
+            // Make a HEAD request to check the transcode endpoint
+            const response = await fetch(transcodedUrl, {
+                method: 'HEAD',
+                credentials: 'same-origin'
+            });
+            
+            if (!response.ok) {
+                let errorDetails = '';
+                
+                // Try to parse error JSON body if available
+                if (response.status === 502 || response.status === 503 || response.status === 415) {
+                    try {
+                        const contentType = response.headers.get('content-type');
+                        if (contentType && contentType.includes('application/json')) {
+                            const text = await response.text();
+                            const errorData = JSON.parse(text);
+                            errorDetails = errorData.details || errorData.error || '';
+                        }
+                    } catch (e) {
+                        // Couldn't parse error body, just use status
+                    }
+                }
+                
+                const errorMap = {
+                    400: 'Bad request - missing URL parameter',
+                    415: 'Unsupported codec - channel may use HEVC or other unsupported video codec',
+                    502: 'Transcode failed - check server logs for details',
+                    503: 'FFmpeg not available on server - cannot transcode'
+                };
+                
+                const message = errorMap[response.status] || `HTTP ${response.status}`;
+                
+                return {
+                    error: true,
+                    status: response.status,
+                    message: message,
+                    details: errorDetails
+                };
+            }
+            
+            return null; // OK, no error
+            
+        } catch (e) {
+            console.warn('Could not validate transcode response:', e);
+            return null; // Assume it's OK if we can't check (likely CORS or network issue)
+        }
+    }
+    
     cancelLoading() {
         console.log('Loading cancelled by user');
         this.isLoadingCancelled = true;
@@ -1990,29 +2044,48 @@ class M3UPlayerApp {
             console.log(`Original URL: ${url.substring(0, 100)}...`);
             console.log(`Transcode URL: ${streamUrl}`);
             
-            // Use mpegts.js for ALL streams - it handles MPEG-TS natively
-            if (typeof mpegts !== 'undefined' && mpegts.getFeatureList().mseLivePlayback) {
-                console.log('Using mpegts.js for MPEG-TS stream playback...');
-                
-                // Destroy previous player if exists
-                if (this.mpegtsPlayer) {
-                    this.mpegtsPlayer.destroy();
-                    this.mpegtsPlayer = null;
+            // Validate transcode endpoint before loading
+            this.validateTranscodeResponse(streamUrl).then(validationError => {
+                if (validationError) {
+                    console.error('❌ Transcode validation failed:', validationError);
+                    const message = validationError.details ? 
+                        `${validationError.message}: ${validationError.details}` : 
+                        validationError.message;
+                    this.showToast(`Stream Error: ${message}`, 'error', 5000);
+                    rejectOnce(new Error(message));
+                    return;
                 }
                 
-                const profile = this.getEffectiveProfileName(channel);
-                // Use the transcoded stream URL instead of the original URL
-                const config = this.getMpegtsPlayerConfig(streamUrl, profile);
+                // Validation passed, proceed with playback
+                continueWithPlayback();
+            }).catch(e => {
+                console.warn('Validation check failed, continuing anyway:', e);
+                continueWithPlayback();
+            });
+            const continueWithPlayback = () => {
+                // Use mpegts.js for ALL streams - it handles MPEG-TS natively
+                if (typeof mpegts !== 'undefined' && mpegts.getFeatureList().mseLivePlayback) {
+                    console.log('Using mpegts.js for MPEG-TS stream playback...');
+                    
+                    // Destroy previous player if exists
+                    if (this.mpegtsPlayer) {
+                        this.mpegtsPlayer.destroy();
+                        this.mpegtsPlayer = null;
+                    }
+                    
+                    const profile = this.getEffectiveProfileName(channel);
+                    // Use the transcoded stream URL instead of the original URL
+                    const config = this.getMpegtsPlayerConfig(streamUrl, profile);
 
-                // Create MPEG-TS player (default profile keeps the original settings unchanged)
-                this.mpegtsPlayer = mpegts.createPlayer(config);
-                
-                // Attach to video element
-                this.mpegtsPlayer.attachMediaElement(this.videoPlayer);
-                
-                // Restore audio settings immediately for ALL streams (not just reconnects)
-                this.videoPlayer.volume = this.volume / 100;
-                this.videoPlayer.muted = false;
+                    // Create MPEG-TS player (default profile keeps the original settings unchanged)
+                    this.mpegtsPlayer = mpegts.createPlayer(config);
+                    
+                    // Attach to video element
+                    this.mpegtsPlayer.attachMediaElement(this.videoPlayer);
+                    
+                    // Restore audio settings immediately for ALL streams (not just reconnects)
+                    this.videoPlayer.volume = this.volume / 100;
+                    this.videoPlayer.muted = false;
                 
                 // Extra safety: ensure audio is not blocked by browser autoplay policy
                 // Try to play immediately to force audio initialization
@@ -2258,9 +2331,10 @@ class M3UPlayerApp {
                         });
                     });
                 }, 200);
-            } else {
-                rejectOnce(new Error('MPEG-TS playback not supported - MSE Live Playback required'));
-            }
+                } else {
+                    rejectOnce(new Error('MPEG-TS playback not supported - MSE Live Playback required'));
+                }
+            }; // End continueWithPlayback function definition
         });
     }
 
