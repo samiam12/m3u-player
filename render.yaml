@@ -4,7 +4,6 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     region: oregon
-    buildCommand: echo "Docker build handles all dependencies"
     startCommand: python server.py
     healthCheckPath: /
     envVars:
