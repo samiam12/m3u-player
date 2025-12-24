@@ -259,6 +259,29 @@ class M3UPlayerApp {
             }
         });
 
+        // Global error handler for uncaught promise rejections (like mpegts.js errors)
+        window.addEventListener('unhandledrejection', (event) => {
+            const error = event.reason;
+            const errorMsg = (error && error.message) ? error.message : String(error);
+            const errorType = error && error.name ? error.name : 'UnknownError';
+            
+            console.warn(`[GLOBAL ERROR] ${errorType}: ${errorMsg}`);
+            
+            // Handle SourceBuffer errors specifically
+            if (errorMsg.includes('sourcebuffer') || errorMsg.includes('removed from the parent media source') || errorMsg.includes('invalidstateerror')) {
+                console.error('[SourceBuffer Error] This will be handled by stream recovery');
+                // Don't prevent default - let the error be handled by our error listeners
+            }
+        });
+        
+        // Global error handler for uncaught exceptions
+        window.addEventListener('error', (event) => {
+            const error = event.error;
+            if (error && error.message && error.message.includes('sourcebuffer')) {
+                console.error('[SourceBuffer Exception] Caught and logged for recovery');
+            }
+        });
+
         // Multiview slot actions (event delegation)
         if (this.multiViewGrid) {
             this.multiViewGrid.addEventListener('click', (e) => this.onMultiviewActionClick(e));
@@ -1947,9 +1970,10 @@ class M3UPlayerApp {
                         const infoStr = (errorInfo && (errorInfo.msg || errorInfo.message || errorInfo.toString())) || '';
                         const combined = `${detailStr} ${infoStr}`.toLowerCase();
 
-                        // Specific recovery for SourceBuffer removed race (common in rapid reloads)
-                        if (!_recoveryAttempted && (combined.includes('sourcebuffer') || combined.includes('removed from the parent media source'))) {
-                            console.warn('Detected SourceBuffer removal; attempting automatic recovery...');
+                        // Specific recovery for SourceBuffer removed (common codec/stream issues)
+                        // This can happen on first attempt or after reconnect
+                        if (!_recoveryAttempted && (combined.includes('sourcebuffer') || combined.includes('removed from the parent media source') || combined.includes('invalidstateerror'))) {
+                            console.warn('Detected SourceBuffer/codec issue; attempting automatic recovery...');
                             _recoveryAttempted = true;
 
                             try {
@@ -1957,14 +1981,22 @@ class M3UPlayerApp {
                                 const savedProfile = profile;
                                 const savedConfig = this.getMpegtsPlayerConfig(savedUrl, savedProfile);
                                 const savedVideo = this.videoPlayer;
+                                const savedVolume = this.videoPlayer.volume;
+                                const savedMuted = this.videoPlayer.muted;
 
                                 this.mpegtsPlayer.destroy();
                                 this.mpegtsPlayer = null;
 
                                 setTimeout(() => {
                                     try {
+                                        console.log('Recovery: Creating fresh player with clean MediaSource...');
                                         this.mpegtsPlayer = mpegts.createPlayer(savedConfig);
                                         this.mpegtsPlayer.attachMediaElement(savedVideo);
+                                        
+                                        // Restore audio settings before loading
+                                        savedVideo.volume = savedVolume;
+                                        savedVideo.muted = savedMuted;
+                                        
                                         this.mpegtsPlayer.load();
                                         console.log('Recovery: player recreated and reloaded');
                                         // Attempt to play after recovery
