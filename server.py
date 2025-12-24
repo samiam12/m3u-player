@@ -88,6 +88,9 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         # Proxy endpoint for CORS bypass
         elif self.path.startswith('/proxy?'):
             self.handle_proxy()
+        # Stream transcoding endpoint for audio codec conversion
+        elif self.path.startswith('/stream?'):
+            self.handle_stream_transcode()
         else:
             # Regular file serving
             super().do_GET()
@@ -412,7 +415,143 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             traceback.print_exc()
             self.send_error(500, f"Proxy error: {str(e)}")
 
-    # ==================== RECORDING HANDLERS ====================
+    def handle_stream_transcode(self):
+        """Stream with audio codec transcoding (ec-3/Dolby to AAC)"""
+        try:
+            # Parse query parameters
+            parsed_path = urllib.parse.urlparse(self.path)
+            query_params = urllib.parse.parse_qs(parsed_path.query)
+            target_url = query_params.get('url', [None])[0]
+            
+            if not target_url:
+                self.send_error(400, "Missing 'url' parameter")
+                return
+            
+            # Decode URL
+            target_url = urllib.parse.unquote(target_url)
+            
+            print(f"[STREAM] Starting audio transcode for: {target_url[:80]}...")
+            
+            # Check if ffmpeg is available
+            try:
+                subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=5)
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                print("[STREAM] ffmpeg not available, falling back to direct stream")
+                # Fallback to direct proxy
+                return self.handle_proxy_stream(target_url)
+            
+            # Use ffmpeg to:
+            # 1. Read MPEG-TS stream from source
+            # 2. Copy video stream as-is (no transcoding)
+            # 3. Transcode audio from ec-3/any codec to AAC
+            # 4. Output as MPEG-TS
+            
+            ffmpeg_cmd = [
+                'ffmpeg',
+                '-i', target_url,                    # Input stream
+                '-c:v', 'copy',                      # Copy video codec (no transcode)
+                '-c:a', 'aac',                       # Transcode audio to AAC
+                '-b:a', '128k',                      # AAC bitrate
+                '-f', 'mpegts',                      # Output format
+                'pipe:1'                             # Output to stdout
+            ]
+            
+            try:
+                # Start ffmpeg process
+                process = subprocess.Popen(
+                    ffmpeg_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    bufsize=65536  # 64KB buffer
+                )
+                
+                print("[STREAM] ffmpeg process started, streaming to client...")
+                
+                # Send HTTP response headers
+                self.send_response(200)
+                self.send_header('Content-Type', 'video/mp2t')  # MPEG-TS content type
+                self.send_header('Transfer-Encoding', 'chunked')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Cache-Control', 'no-cache, no-store')
+                self.end_headers()
+                
+                # Stream chunks from ffmpeg to client
+                chunk_size = 8192
+                bytes_sent = 0
+                while True:
+                    chunk = process.stdout.read(chunk_size)
+                    if not chunk:
+                        break
+                    
+                    try:
+                        self.wfile.write(chunk)
+                        bytes_sent += len(chunk)
+                    except BrokenPipeError:
+                        print("[STREAM] Client disconnected after {} bytes".format(bytes_sent))
+                        break
+                
+                # Clean up process
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                
+                print(f"[STREAM] Transcoding complete, sent {bytes_sent} bytes")
+                
+            except Exception as e:
+                print(f"[STREAM] ffmpeg error: {str(e)}")
+                try:
+                    process.kill()
+                except:
+                    pass
+                self.send_error(502, f"Stream transcode failed: {str(e)}")
+                
+        except Exception as e:
+            print(f"[STREAM] Handler error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            self.send_error(500, f"Stream error: {str(e)}")
+
+    def handle_proxy_stream(self, target_url):
+        """Fallback: proxy stream directly without transcoding"""
+        try:
+            print(f"[PROXY_STREAM] Direct stream: {target_url[:80]}...")
+            
+            req = urllib.request.Request(target_url)
+            req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+            req.add_header('Accept', '*/*')
+            
+            with urllib.request.urlopen(req, timeout=60) as response:
+                # Send response headers
+                self.send_response(200)
+                self.send_header('Content-Type', response.headers.get('Content-Type', 'video/mp2t'))
+                self.send_header('Transfer-Encoding', 'chunked')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                
+                # Stream chunks
+                chunk_size = 65536
+                bytes_sent = 0
+                while True:
+                    chunk = response.read(chunk_size)
+                    if not chunk:
+                        break
+                    
+                    try:
+                        self.wfile.write(chunk)
+                        bytes_sent += len(chunk)
+                    except BrokenPipeError:
+                        print(f"[PROXY_STREAM] Client disconnected after {bytes_sent} bytes")
+                        break
+                
+                print(f"[PROXY_STREAM] Stream complete, sent {bytes_sent} bytes")
+                
+        except Exception as e:
+            print(f"[PROXY_STREAM] Error: {str(e)}")
+            self.send_error(502, f"Stream error: {str(e)}")
+
+    # ==================== PROXY HANDLER ====================
 
     def handle_recording_start(self):
         """Start recording a stream"""
