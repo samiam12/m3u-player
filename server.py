@@ -418,8 +418,23 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def handle_stream_transcode(self):
         """Stream with audio codec transcoding (E-AC-3 → AAC)
         
-        Outputs MPEG-TS with AAC audio so mpegts.js can play it.
-        Video stays untouched (copy, no transcode).
+        Architecture:
+        - Input: MPEG-TS stream (may have E-AC-3, broken timestamps, etc)
+        - FFmpeg: Transcodes audio E-AC-3 → AAC, copies video untouched
+        - Output: MPEG-TS with AAC audio (Chrome-safe, mpegts.js compatible)
+        
+        Key flags for IPTV stability:
+        - genpts+igndts: Generate missing PTS, ignore broken DTS (IPTV feeds often have these)
+        - reconnect: Auto-reconnect on connection loss
+        - ac 2: Force stereo audio (prevents some glitches)
+        
+        Important limitations:
+        - MPEG-TS is less stable than HLS for lossy IPTV feeds
+        - HEVC/H.265 video will still not play (not a codec issue for Chrome)
+        - FFmpeg must be available on server, or fallback to direct proxy
+        - Some IPTV sources are just unreliable and may fail anyway
+        
+        Fallback: If FFmpeg unavailable, uses direct proxy (audio not transcoded)
         """
         try:
             # Parse query parameters
@@ -459,19 +474,27 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             
             ffmpeg_cmd = [
                 'ffmpeg',
-                '-fflags', 'nobuffer',
-                '-flags', 'low_delay',
+                '-reconnect', '1',                   # Auto-reconnect on timeout
+                '-reconnect_streamed', '1',          # Reconnect for streaming protocols
+                '-reconnect_delay_max', '2',         # Max 2s between reconnects
+                '-fflags', '+genpts+igndts',         # Generate PTS, ignore DTS errors (IPTV stability)
+                '-flags', 'low_delay',               # Low latency mode
                 '-hide_banner',
                 '-loglevel', 'error',
                 '-i', target_url,                    # Input stream URL
                 '-c:v', 'copy',                      # Copy video (no transcode)
                 '-c:a', 'aac',                       # Transcode audio to AAC
                 '-b:a', '128k',                      # AAC bitrate
+                '-ac', '2',                          # Force stereo output
                 '-f', 'mpegts',                      # Output as MPEG-TS (not HLS)
                 '-'                                  # Output to stdout
             ]
             
             print(f"[TRANSCODE] Starting ffmpeg (E-AC-3 → AAC)...", flush=True)
+            
+            # Optional: Detect video codec to warn about HEVC
+            # (HEVC/H.265 not supported by Chrome - would need re-encode)
+            # Skip this for now to keep latency low, but useful for debugging
             
             try:
                 # Start ffmpeg process

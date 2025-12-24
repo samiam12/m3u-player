@@ -1924,8 +1924,20 @@ class M3UPlayerApp {
     
     /**
      * Wrap a stream URL to use server-side audio transcoding
-     * Converts E-AC-3 (Dolby) → AAC, outputs MPEG-TS
-     * mpegts.js plays it normally - no client changes needed
+     * 
+     * Purpose: Convert E-AC-3 (Dolby Digital Plus) → AAC for Chrome compatibility
+     * Output: MPEG-TS with AAC audio (mpegts.js plays it natively)
+     * 
+     * Important caveats:
+     * - MPEG-TS + mpegts.js is less stable than HLS
+     * - Some IPTV feeds have broken timestamps (genpts+igndts fixes this)
+     * - HEVC/H.265 video not supported by Chrome (mpegts.js can't fix codecs)
+     * - FFmpeg must be available on server (fallback to direct proxy if not)
+     * 
+     * If a stream still fails:
+     * 1. Check browser console for errors
+     * 2. Verify server logs for FFmpeg status
+     * 3. Some IPTV sources are just unreliable
      */
     getTranscodedStreamUrl(url) {
         // Wrap with transcode endpoint to convert E-AC-3 to AAC
