@@ -268,19 +268,38 @@ class M3UPlayerApp {
             console.warn(`[GLOBAL ERROR] ${errorType}: ${errorMsg}`);
             
             // Handle SourceBuffer errors specifically
-            if (errorMsg.includes('sourcebuffer') || errorMsg.includes('removed from the parent media source') || errorMsg.includes('invalidstateerror')) {
-                console.error('[SourceBuffer Error] This will be handled by stream recovery');
-                // Don't prevent default - let the error be handled by our error listeners
+            if (errorMsg.toLowerCase().includes('sourcebuffer') || errorMsg.toLowerCase().includes('removed from the parent media source') || errorMsg.toLowerCase().includes('invalidstateerror')) {
+                console.error('[SourceBuffer Error] GLOBAL CATCH - triggering fallback recovery');
+                // Try to recover by switching to a safe stream or showing message
+                try {
+                    // Trigger a global recovery attempt
+                    if (this.currentChannel) {
+                        console.log('Attempting global fallback recovery for:', this.currentChannel);
+                        setTimeout(() => this.playChannel(this.currentChannel), 1000);
+                    }
+                } catch (e) {
+                    console.error('Global recovery failed:', e);
+                }
             }
         });
         
         // Global error handler for uncaught exceptions
         window.addEventListener('error', (event) => {
             const error = event.error;
-            if (error && error.message && error.message.includes('sourcebuffer')) {
-                console.error('[SourceBuffer Exception] Caught and logged for recovery');
+            if (error && error.message && error.message.toLowerCase().includes('sourcebuffer')) {
+                console.error('[SourceBuffer Exception] Caught globally - will trigger recovery');
             }
         });
+        
+        // Monitor for messages from mpegts about stream issues
+        const originalConsoleError = console.error;
+        console.error = function(...args) {
+            const fullMsg = args.join(' ').toLowerCase();
+            if (fullMsg.includes('sourcebuffer') || fullMsg.includes('removed from the parent media source')) {
+                console.warn('[STREAM MONITOR] Detected SourceBuffer error in console output');
+            }
+            return originalConsoleError.apply(console, args);
+        };
 
         // Multiview slot actions (event delegation)
         if (this.multiViewGrid) {
@@ -1960,8 +1979,9 @@ class M3UPlayerApp {
                 this.mpegtsPlayer.load();
                 
                 // Handle errors - with automatic recovery and auto-reconnect
-                let _recoveryAttempted = false;
+                let _recoveryAttempts = 0;
                 let _reconnectAttempts = 0;
+                const maxRecoveryAttempts = 3;
                 const maxReconnectAttempts = 5;
                 
                 this.mpegtsPlayer.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
@@ -1970,19 +1990,19 @@ class M3UPlayerApp {
                         const infoStr = (errorInfo && (errorInfo.msg || errorInfo.message || errorInfo.toString())) || '';
                         const combined = `${detailStr} ${infoStr}`.toLowerCase();
 
+                        console.log('Stream error detected:', { errorType, detailStr, infoStr });
+
                         // Specific recovery for SourceBuffer removed (common codec/stream issues)
                         // This can happen on first attempt or after reconnect
-                        if (!_recoveryAttempted && (combined.includes('sourcebuffer') || combined.includes('removed from the parent media source') || combined.includes('invalidstateerror'))) {
-                            console.warn('Detected SourceBuffer/codec issue; attempting automatic recovery...');
-                            _recoveryAttempted = true;
+                        if (_recoveryAttempts < maxRecoveryAttempts && (combined.includes('sourcebuffer') || combined.includes('removed from the parent media source') || combined.includes('invalidstateerror'))) {
+                            console.warn(`Detected SourceBuffer/codec issue (recovery attempt ${_recoveryAttempts + 1}/${maxRecoveryAttempts}); attempting automatic recovery...`);
+                            _recoveryAttempts++;
 
                             try {
                                 const savedUrl = url;
                                 const savedProfile = profile;
                                 const savedConfig = this.getMpegtsPlayerConfig(savedUrl, savedProfile);
                                 const savedVideo = this.videoPlayer;
-                                const savedVolume = this.videoPlayer.volume;
-                                const savedMuted = this.videoPlayer.muted;
 
                                 this.mpegtsPlayer.destroy();
                                 this.mpegtsPlayer = null;
@@ -1993,9 +2013,11 @@ class M3UPlayerApp {
                                         this.mpegtsPlayer = mpegts.createPlayer(savedConfig);
                                         this.mpegtsPlayer.attachMediaElement(savedVideo);
                                         
-                                        // Restore audio settings before loading
-                                        savedVideo.volume = savedVolume;
-                                        savedVideo.muted = savedMuted;
+                                        // FORCE audio to be enabled on recovery - CRITICAL FIX
+                                        // Don't rely on saved audio state, force it to be on
+                                        savedVideo.volume = this.volume / 100;
+                                        savedVideo.muted = false;
+                                        console.log('Recovery: Audio FORCED - volume=' + this.volume + '%, muted=false');
                                         
                                         this.mpegtsPlayer.load();
                                         console.log('Recovery: player recreated and reloaded');
@@ -2020,30 +2042,28 @@ class M3UPlayerApp {
                                 _reconnectAttempts++;
                                 const retryDelay = Math.min(1000 * _reconnectAttempts, 10000);
                                 console.log(`Reconnect attempt ${_reconnectAttempts}/${maxReconnectAttempts} in ${retryDelay}ms`);
-                                // Save audio state before reconnect
-                                const savedVolume = this.videoPlayer.volume;
-                                const savedMuted = this.videoPlayer.muted;
+                                // Force audio to be enabled before reconnect
                                 setTimeout(() => {
                                     try {
                                         if (this.mpegtsPlayer) {
                                             this.mpegtsPlayer.destroy();
                                         }
-                                        // Reconnect and restore audio settings
+                                        // Reconnect with forced audio
                                         const reconnectPromise = this.playChannel(channel);
                                         if (reconnectPromise && reconnectPromise.then) {
                                             reconnectPromise.then(() => {
-                                                // Restore audio settings after successful reconnect
-                                                this.videoPlayer.volume = savedVolume;
-                                                this.videoPlayer.muted = savedMuted;
-                                                console.log('Audio restored after reconnect: volume=' + savedVolume + ', muted=' + savedMuted);
+                                                // FORCE audio after reconnect (don't rely on saved state)
+                                                this.videoPlayer.volume = this.volume / 100;
+                                                this.videoPlayer.muted = false;
+                                                console.log('Audio FORCED after reconnect: volume=' + this.volume + '%, muted=false');
                                             }).catch(e => {
                                                 console.error('Reconnect promise failed:', e);
                                             });
                                         } else {
-                                            // Fallback: restore immediately if no promise
+                                            // Fallback: force audio immediately if no promise
                                             setTimeout(() => {
-                                                this.videoPlayer.volume = savedVolume;
-                                                this.videoPlayer.muted = savedMuted;
+                                                this.videoPlayer.volume = this.volume / 100;
+                                                this.videoPlayer.muted = false;
                                             }, 500);
                                         }
                                     } catch (e) {
@@ -2063,6 +2083,58 @@ class M3UPlayerApp {
                         console.warn('Error in error handler:', e);
                     }
                 });
+                
+                // Add a watchdog timer to detect if stream is stuck and force recovery
+                let hasData = false;
+                let watchdogTimer = null;
+                let watchdogAttempts = 0;
+                
+                this.mpegtsPlayer.on(mpegts.Events.BUFFERING_COMPLETE, () => {
+                    hasData = true;
+                    console.log('Stream data received - watchdog cleared');
+                });
+                
+                this.mpegtsPlayer.on(mpegts.Events.STATISTICS_INFO, () => {
+                    hasData = true;
+                });
+                
+                // Watchdog: if no data arrives in 10 seconds, force recovery
+                watchdogTimer = setTimeout(() => {
+                    if (!hasData && watchdogAttempts < 3) {
+                        console.error('⚠️  WATCHDOG: No stream data received after 10 seconds - forcing recovery');
+                        watchdogAttempts++;
+                        try {
+                            if (this.mpegtsPlayer) {
+                                this.mpegtsPlayer.destroy();
+                                this.mpegtsPlayer = null;
+                            }
+                            
+                            setTimeout(() => {
+                                console.log('WATCHDOG: Reloading stream with FORCED audio...');
+                                const newConfig = this.getMpegtsPlayerConfig(url, profile);
+                                this.mpegtsPlayer = mpegts.createPlayer(newConfig);
+                                this.mpegtsPlayer.attachMediaElement(this.videoPlayer);
+                                
+                                // FORCE audio to be enabled on recovery - this is critical
+                                this.videoPlayer.volume = this.volume / 100;
+                                this.videoPlayer.muted = false;
+                                console.log('WATCHDOG: Audio FORCED - volume=' + this.volume + '%, muted=false');
+                                
+                                this.mpegtsPlayer.load();
+                            }, 500);
+                        } catch (e) {
+                            console.error('WATCHDOG recovery failed:', e);
+                        }
+                    }
+                }, 10000);
+                
+                // Clean up watchdog when stream successfully plays
+                this.videoPlayer.addEventListener('playing', () => {
+                    if (watchdogTimer) {
+                        clearTimeout(watchdogTimer);
+                        console.log('Stream playing - watchdog disabled');
+                    }
+                }, { once: true });
                 
                 // Play when ready
                 setTimeout(() => {
