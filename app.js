@@ -1924,12 +1924,15 @@ class M3UPlayerApp {
     
     /**
      * Wrap a stream URL to use server-side audio transcoding
-     * This converts unsupported audio codecs (like ec-3) to AAC
-     * Only used as fallback when audio errors occur
+     * Converts E-AC-3 (Dolby) → AAC, outputs MPEG-TS
+     * mpegts.js plays it normally - no client changes needed
      */
     getTranscodedStreamUrl(url) {
-        // Return original URL by default
-        // Only use transcode endpoint if explicitly requested
+        // Wrap with transcode endpoint to convert E-AC-3 to AAC
+        if (url && url.includes('://')) {
+            const encoded = encodeURIComponent(url);
+            return `/stream?url=${encoded}`;
+        }
         return url;
     }
     
@@ -1970,9 +1973,10 @@ class M3UPlayerApp {
             };
 
             // Wrap URL with server-side audio transcoding for compatibility
-            // This handles unsupported codecs like ec-3 (Dolby) by transcoding to AAC
+            // This handles unsupported codecs like E-AC-3 (Dolby) by transcoding to AAC
             const streamUrl = this.getTranscodedStreamUrl(url);
-            console.log(`Stream URL: ${url.substring(0, 100)}...`);
+            console.log(`Original URL: ${url.substring(0, 100)}...`);
+            console.log(`Transcode URL: ${streamUrl}`);
             
             // Use mpegts.js for ALL streams - it handles MPEG-TS natively
             if (typeof mpegts !== 'undefined' && mpegts.getFeatureList().mseLivePlayback) {

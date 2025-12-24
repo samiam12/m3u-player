@@ -416,7 +416,11 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error(500, f"Proxy error: {str(e)}")
 
     def handle_stream_transcode(self):
-        """Stream with audio codec transcoding (ec-3/Dolby to AAC)"""
+        """Stream with audio codec transcoding (E-AC-3 → AAC)
+        
+        Outputs MPEG-TS with AAC audio so mpegts.js can play it.
+        Video stays untouched (copy, no transcode).
+        """
         try:
             # Parse query parameters
             parsed_path = urllib.parse.urlparse(self.path)
@@ -430,57 +434,59 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             # Decode URL
             target_url = urllib.parse.unquote(target_url)
             
-            print(f"[STREAM] Transcode request for: {target_url[:80]}...", flush=True)
+            print(f"[TRANSCODE] Request for: {target_url[:80]}...", flush=True)
             
             # Check if ffmpeg is available
             ffmpeg_available = False
             try:
                 result = subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=5)
                 ffmpeg_available = result.returncode == 0
-                print(f"[STREAM] ffmpeg available: {ffmpeg_available}", flush=True)
+                print(f"[TRANSCODE] ffmpeg available: {ffmpeg_available}", flush=True)
             except Exception as e:
-                print(f"[STREAM] ffmpeg check failed: {e}", flush=True)
+                print(f"[TRANSCODE] ffmpeg check failed: {e}", flush=True)
                 ffmpeg_available = False
             
             # If ffmpeg not available, fall back to direct proxy
             if not ffmpeg_available:
-                print("[STREAM] ffmpeg unavailable, using direct proxy stream", flush=True)
+                print("[TRANSCODE] ffmpeg unavailable, using direct proxy stream", flush=True)
                 return self.handle_proxy_stream(target_url)
             
             # Use ffmpeg to:
             # 1. Read MPEG-TS stream from source
             # 2. Copy video stream as-is (no transcoding)
-            # 3. Transcode audio from ec-3/any codec to AAC
-            # 4. Output as MPEG-TS
+            # 3. Transcode audio from E-AC-3/any codec to AAC
+            # 4. Output as MPEG-TS (compatible with mpegts.js)
             
             ffmpeg_cmd = [
                 'ffmpeg',
+                '-fflags', 'nobuffer',
+                '-flags', 'low_delay',
                 '-hide_banner',
                 '-loglevel', 'error',
-                '-i', target_url,                    # Input stream
-                '-c:v', 'copy',                      # Copy video codec (no transcode)
+                '-i', target_url,                    # Input stream URL
+                '-c:v', 'copy',                      # Copy video (no transcode)
                 '-c:a', 'aac',                       # Transcode audio to AAC
                 '-b:a', '128k',                      # AAC bitrate
-                '-f', 'mpegts',                      # Output format
+                '-f', 'mpegts',                      # Output as MPEG-TS (not HLS)
                 '-'                                  # Output to stdout
             ]
             
-            print(f"[STREAM] Starting ffmpeg: {' '.join(ffmpeg_cmd[:5])}...", flush=True)
+            print(f"[TRANSCODE] Starting ffmpeg (E-AC-3 → AAC)...", flush=True)
             
             try:
-                # Start ffmpeg process with proper error handling
+                # Start ffmpeg process
                 process = subprocess.Popen(
                     ffmpeg_cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    bufsize=65536  # 64KB buffer
+                    bufsize=65536
                 )
                 
-                print("[STREAM] ffmpeg process started, streaming to client...", flush=True)
+                print("[TRANSCODE] ffmpeg process started, streaming to client...", flush=True)
                 
-                # Send HTTP response headers
+                # Send HTTP response headers for MPEG-TS
                 self.send_response(200)
-                self.send_header('Content-Type', 'video/mp2t')  # MPEG-TS content type
+                self.send_header('Content-Type', 'video/mp2t')  # MPEG-TS MIME type
                 self.send_header('Transfer-Encoding', 'chunked')
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.send_header('Cache-Control', 'no-cache, no-store')
@@ -497,14 +503,14 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         break
                     
                     if first_chunk:
-                        print(f"[STREAM] First chunk received ({len(chunk)} bytes)", flush=True)
+                        print(f"[TRANSCODE] First chunk received ({len(chunk)} bytes)", flush=True)
                         first_chunk = False
                     
                     try:
                         self.wfile.write(chunk)
                         bytes_sent += len(chunk)
                     except BrokenPipeError:
-                        print(f"[STREAM] Client disconnected after {bytes_sent} bytes", flush=True)
+                        print(f"[TRANSCODE] Client disconnected after {bytes_sent} bytes", flush=True)
                         break
                 
                 # Clean up process
@@ -512,23 +518,23 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 try:
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
-                    print("[STREAM] ffmpeg timeout, killing process", flush=True)
+                    print("[TRANSCODE] ffmpeg timeout, killing process", flush=True)
                     process.kill()
                 
-                print(f"[STREAM] Transcoding complete, sent {bytes_sent} bytes", flush=True)
+                print(f"[TRANSCODE] Stream complete, sent {bytes_sent} bytes", flush=True)
                 
             except Exception as e:
-                print(f"[STREAM] ffmpeg error: {str(e)}", flush=True)
+                print(f"[TRANSCODE] ffmpeg error: {str(e)}", flush=True)
                 import traceback
                 traceback.print_exc()
                 try:
                     process.kill()
                 except:
                     pass
-                self.send_error(502, f"Stream transcode failed: {str(e)}")
+                self.send_error(502, f"Transcode failed: {str(e)}")
                 
         except Exception as e:
-            print(f"[STREAM] Handler error: {str(e)}", flush=True)
+            print(f"[TRANSCODE] Handler error: {str(e)}", flush=True)
             import traceback
             traceback.print_exc()
             self.send_error(500, f"Stream error: {str(e)}")
