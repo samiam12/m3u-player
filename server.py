@@ -92,9 +92,6 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_recording_list()
         elif self.path.startswith('/recording/play'):
             self.handle_recording_play()
-        # Stream endpoint for transcoding
-        elif self.path.startswith('/stream?'):
-            self.handle_stream()
         # Debug logging endpoint
         elif self.path.startswith('/debug?'):
             self.handle_debug()
@@ -141,47 +138,6 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             print(f"[DEBUG] Error: {e}")
             self.send_error(500)
-
-    def handle_stream(self):
-        """Handle stream transcoding/proxying"""
-        try:
-            parsed_path = urllib.parse.urlparse(self.path)
-            query_params = urllib.parse.parse_qs(parsed_path.query)
-            stream_url = query_params.get('url', [None])[0]
-            
-            if not stream_url:
-                self.send_error(400, "Missing 'url' parameter")
-                return
-            
-            stream_url = urllib.parse.unquote(stream_url)
-            print(f"[STREAM] Proxying: {stream_url[:100]}...")
-            
-            # For now, just proxy the stream directly
-            req = urllib.request.Request(stream_url)
-            req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-            
-            try:
-                with urllib.request.urlopen(req, timeout=30) as response:
-                    # Send headers
-                    self.send_response(200)
-                    content_type = response.headers.get('Content-Type', 'video/mp2t')
-                    self.send_header('Content-Type', content_type)
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.send_header('Cache-Control', 'no-cache')
-                    self.end_headers()
-                    
-                    # Stream the content
-                    while True:
-                        chunk = response.read(65536)
-                        if not chunk:
-                            break
-                        self.wfile.write(chunk)
-            except Exception as e:
-                print(f"[STREAM] Error: {e}")
-                self.send_error(502, f"Failed to fetch stream: {str(e)}")
-        except Exception as e:
-            print(f"[STREAM] Handler error: {e}")
-            self.send_error(500, str(e))
 
     def handle_party_create(self):
         """Create a new party session"""
