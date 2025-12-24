@@ -1,9 +1,9 @@
 services:
   - type: web
     name: m3u-player
-    runtime: docker
+    runtime: python3
     region: oregon
-    dockerfilePath: ./Dockerfile
+    startCommand: python server.py
     envVars:
       - key: M3U_PLAYER_NO_BROWSER
         value: "1"
