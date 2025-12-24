@@ -2047,16 +2047,13 @@ class M3UPlayerApp {
             // Validate transcode endpoint before loading
             this.validateTranscodeResponse(streamUrl).then(validationError => {
                 if (validationError) {
-                    console.error('❌ Transcode validation failed:', validationError);
-                    const message = validationError.details ? 
-                        `${validationError.message}: ${validationError.details}` : 
-                        validationError.message;
-                    this.showToast(`Stream Error: ${message}`, 'error', 5000);
-                    rejectOnce(new Error(message));
-                    return;
+                    // Validation failed, but don't reject - let playback try anyway
+                    // Error handlers in mpegts.js will catch real problems
+                    console.warn('⚠️  Transcode validation returned:', validationError);
+                    console.warn('    Continuing with playback anyway (mpegts.js will handle errors)');
                 }
                 
-                // Validation passed, proceed with playback
+                // Always proceed with playback - error handlers will catch real issues
                 continueWithPlayback();
             }).catch(e => {
                 console.warn('Validation check failed, continuing anyway:', e);

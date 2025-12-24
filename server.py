@@ -62,6 +62,24 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         """Handle preflight CORS requests"""
         self.send_response(200)
         self.end_headers()
+    
+    def do_HEAD(self):
+        """Handle HEAD requests - delegates to GET without sending body"""
+        # For HEAD requests, we just check if the path is valid
+        # The body is automatically omitted by the HTTP spec
+        print(f"[SERVER] HEAD {self.path}")
+        
+        # Check if this is a transcode endpoint
+        if self.path.startswith('/stream?'):
+            # For transcode validation, just send 200 OK without actually starting ffmpeg
+            self.send_response(200)
+            self.send_header('Content-Type', 'video/mp2t')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            return
+        
+        # For other paths, use default behavior
+        super().do_HEAD()
 
     def do_GET(self):
         """Handle GET requests with proxy support"""
