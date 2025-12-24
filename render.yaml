@@ -2,15 +2,10 @@ services:
   - type: web
     name: m3u-player
     runtime: docker
-    dockerfilePath: ./Dockerfile
     region: oregon
-    buildCommand: echo "Docker image will be built from Dockerfile"
-    healthCheckPath: /
     envVars:
       - key: M3U_PLAYER_NO_BROWSER
         value: "1"
-      - key: PORT
-        value: "10000"
     routes:
       - type: http
         path: /
