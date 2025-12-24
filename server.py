@@ -21,8 +21,8 @@ import shutil
 import requests
 from pathlib import Path
 
-# Use PORT from environment (Render) or default to 8002
-PORT = int(os.environ.get('PORT', 8002))
+# Use PORT from environment (Render) or default to 10000
+PORT = int(os.environ.get('PORT', 10000))
 
 print("[SERVER] Starting M3U Player Server")
 print(f"[SERVER] Using direct HTTP streaming for recording")
