@@ -3,6 +3,7 @@ services:
     name: m3u-player
     runtime: docker
     region: oregon
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: M3U_PLAYER_NO_BROWSER
         value: "1"
