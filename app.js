@@ -1983,12 +1983,32 @@ class M3UPlayerApp {
                                 _reconnectAttempts++;
                                 const retryDelay = Math.min(1000 * _reconnectAttempts, 10000);
                                 console.log(`Reconnect attempt ${_reconnectAttempts}/${maxReconnectAttempts} in ${retryDelay}ms`);
+                                // Save audio state before reconnect
+                                const savedVolume = this.videoPlayer.volume;
+                                const savedMuted = this.videoPlayer.muted;
                                 setTimeout(() => {
                                     try {
                                         if (this.mpegtsPlayer) {
                                             this.mpegtsPlayer.destroy();
                                         }
-                                        this.playChannel(channel);
+                                        // Reconnect and restore audio settings
+                                        const reconnectPromise = this.playChannel(channel);
+                                        if (reconnectPromise && reconnectPromise.then) {
+                                            reconnectPromise.then(() => {
+                                                // Restore audio settings after successful reconnect
+                                                this.videoPlayer.volume = savedVolume;
+                                                this.videoPlayer.muted = savedMuted;
+                                                console.log('Audio restored after reconnect: volume=' + savedVolume + ', muted=' + savedMuted);
+                                            }).catch(e => {
+                                                console.error('Reconnect promise failed:', e);
+                                            });
+                                        } else {
+                                            // Fallback: restore immediately if no promise
+                                            setTimeout(() => {
+                                                this.videoPlayer.volume = savedVolume;
+                                                this.videoPlayer.muted = savedMuted;
+                                            }, 500);
+                                        }
                                     } catch (e) {
                                         console.error('Reconnect failed:', e);
                                     }

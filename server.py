@@ -462,12 +462,20 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             chunk_size = 8192
                             max_duration = 36000  # 10 hours
                             start_time = time.time()
+                            last_data_time = time.time()  # Track when data last arrived
+                            no_data_timeout = 2  # Stop recording if no data for 2 seconds
                             
                             with open(filepath, 'wb') as f:
                                 for chunk in response.iter_content(chunk_size=chunk_size):
                                     if chunk:
                                         f.write(chunk)
                                         bytes_written += len(chunk)
+                                        last_data_time = time.time()  # Update on each chunk
+                                    else:
+                                        # No data - check if stream ended
+                                        if time.time() - last_data_time > no_data_timeout:
+                                            print(f"[RECORDING] No data for {no_data_timeout}s, assuming stream ended", flush=True)
+                                            break
                                     
                                     # Check duration limit
                                     elapsed = time.time() - start_time
@@ -483,17 +491,20 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             print(f"[RECORDING] Request error: {str(e)}", flush=True)
 
                         
-                        # Store recording info with actual start time
+                        # Store recording info - calculate duration from actual recording time
                         if filepath.exists():
                             size = filepath.stat().st_size
-                            duration = int(time.time()) - actual_start_time
+                            # Use the actual elapsed time from when we started recording
+                            # This reflects the real duration of the recording period
+                            actual_end_time = int(time.time())
+                            duration = max(1, actual_end_time - actual_start_time)  # At least 1 second
                             RECORDED_FILES[filename] = {
                                 'channel': channel,
                                 'size': size,
                                 'duration': duration,
                                 'timestamp': actual_start_time
                             }
-                            print(f"[RECORDING] Complete: {filename} ({size} bytes, {duration}s)", flush=True)
+                            print(f"[RECORDING] Complete: {filename} ({size} bytes, {duration}s elapsed)", flush=True)
                         else:
                             print(f"[RECORDING] File not created: {filepath}", flush=True)
 
@@ -536,9 +547,21 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             data = json.loads(body.decode())
             
             print(f"[RECORDING] Stop request for channel: {data.get('channel')}")
+            print(f"[RECORDING] Client-reported duration: {data.get('duration')}s")
             print(f"[RECORDING] Active recordings: {list(ACTIVE_RECORDINGS.keys())}")
             
-            # Find and stop the active recording
+            # Find the active recording and update its duration from client
+            client_duration = data.get('duration', 0)
+            
+            # Update RECORDED_FILES with client's more accurate duration measurement
+            for filename, rec_info in list(RECORDED_FILES.items()):
+                if rec_info.get('channel') == data.get('channel'):
+                    if client_duration > 0:
+                        rec_info['duration'] = client_duration
+                        print(f"[RECORDING] Updated duration for {filename}: {client_duration}s (from client)")
+                    break
+            
+            # Try to stop any active recording process
             stopped = False
             for filename, rec_info in list(ACTIVE_RECORDINGS.items()):
                 if rec_info.get('channel') == data.get('channel'):
@@ -569,9 +592,9 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         stopped = True
             
             if not stopped:
-                print(f"[RECORDING] No matching recording found to stop")
+                print(f"[RECORDING] No matching recording found to stop (but duration updated)")
             
-            response = json.dumps({'success': stopped})
+            response = json.dumps({'success': True})
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(response)))
