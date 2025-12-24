@@ -259,55 +259,6 @@ class M3UPlayerApp {
             }
         });
 
-        // Global error handler for uncaught promise rejections (like mpegts.js errors)
-        window.addEventListener('unhandledrejection', (event) => {
-            const error = event.reason;
-            const errorMsg = (error && error.message) ? error.message : String(error);
-            const errorType = error && error.name ? error.name : 'UnknownError';
-            
-            console.warn(`[GLOBAL ERROR] ${errorType}: ${errorMsg}`);
-            
-            // Handle audio initialization failures - suppress these errors
-            // Some audio codecs (like ec-3) may not be supported but video can still play
-            if (errorMsg.toLowerCase().includes('unhandled error') || errorMsg.toLowerCase().includes('appendinitsegment')) {
-                console.warn('[AUDIO CODEC] Suppressing audio initialization error - video may continue');
-                event.preventDefault(); // Prevent the unhandled rejection from crashing
-                return; // Don't trigger recovery for codec errors
-            }
-            
-            // Handle audio/SourceBuffer errors specifically
-            if (errorMsg.toLowerCase().includes('sourcebuffer') || errorMsg.toLowerCase().includes('removed from the parent media source') || errorMsg.toLowerCase().includes('invalidstateerror')) {
-                console.error('[AUDIO/BUFFER ERROR] GLOBAL CATCH - triggering fallback recovery');
-                // Try to recover by reloading the current stream
-                try {
-                    if (this.currentChannel) {
-                        console.log('Attempting global fallback recovery for:', this.currentChannel);
-                        setTimeout(() => this.playChannel(this.currentChannel), 1500);
-                    }
-                } catch (e) {
-                    console.error('Global recovery failed:', e);
-                }
-            }
-        });
-        
-        // Global error handler for uncaught exceptions
-        window.addEventListener('error', (event) => {
-            const error = event.error;
-            if (error && error.message && error.message.toLowerCase().includes('sourcebuffer')) {
-                console.error('[SourceBuffer Exception] Caught globally - will trigger recovery');
-            }
-        });
-        
-        // Monitor for messages from mpegts about stream issues
-        const originalConsoleError = console.error;
-        console.error = function(...args) {
-            const fullMsg = args.join(' ').toLowerCase();
-            if (fullMsg.includes('sourcebuffer') || fullMsg.includes('removed from the parent media source')) {
-                console.warn('[STREAM MONITOR] Detected SourceBuffer error in console output');
-            }
-            return originalConsoleError.apply(console, args);
-        };
-
         // Multiview slot actions (event delegation)
         if (this.multiViewGrid) {
             this.multiViewGrid.addEventListener('click', (e) => this.onMultiviewActionClick(e));
@@ -1922,86 +1873,6 @@ class M3UPlayerApp {
         }
     }
     
-    /**
-     * Wrap a stream URL to use server-side audio transcoding
-     * 
-     * Purpose: Convert E-AC-3 (Dolby Digital Plus) → AAC for Chrome compatibility
-     * Output: MPEG-TS with AAC audio (mpegts.js plays it natively)
-     * 
-     * Important caveats:
-     * - MPEG-TS + mpegts.js is less stable than HLS
-     * - Some IPTV feeds have broken timestamps (genpts+igndts fixes this)
-     * - HEVC/H.265 video not supported by Chrome (mpegts.js can't fix codecs)
-     * - FFmpeg must be available on server (fallback to direct proxy if not)
-     * 
-     * If a stream still fails:
-     * 1. Check browser console for errors
-     * 2. Verify server logs for FFmpeg status
-     * 3. Some IPTV sources are just unreliable
-     */
-    getTranscodedStreamUrl(url) {
-        // Wrap with transcode endpoint to convert E-AC-3 to AAC
-        if (url && url.includes('://')) {
-            const encoded = encodeURIComponent(url);
-            return `/stream?url=${encoded}`;
-        }
-        return url;
-    }
-    
-    /**
-     * Validate transcode endpoint response headers for HTTP errors
-     * Returns error details if server returned error, null if OK
-     */
-    async validateTranscodeResponse(transcodedUrl) {
-        try {
-            // Make a HEAD request to check the transcode endpoint
-            const response = await fetch(transcodedUrl, {
-                method: 'HEAD',
-                credentials: 'same-origin'
-            });
-            
-            if (!response.ok) {
-                let errorDetails = '';
-                
-                // Try to parse error JSON body if available
-                if (response.status === 502 || response.status === 503 || response.status === 415) {
-                    try {
-                        const contentType = response.headers.get('content-type');
-                        if (contentType && contentType.includes('application/json')) {
-                            const text = await response.text();
-                            const errorData = JSON.parse(text);
-                            errorDetails = errorData.details || errorData.error || '';
-                        }
-                    } catch (e) {
-                        // Couldn't parse error body, just use status
-                    }
-                }
-                
-                const errorMap = {
-                    400: 'Bad request - missing URL parameter',
-                    415: 'Unsupported codec - channel may use HEVC or other unsupported video codec',
-                    502: 'Transcode failed - check server logs for details',
-                    503: 'FFmpeg not available on server - cannot transcode'
-                };
-                
-                const message = errorMap[response.status] || `HTTP ${response.status}`;
-                
-                return {
-                    error: true,
-                    status: response.status,
-                    message: message,
-                    details: errorDetails
-                };
-            }
-            
-            return null; // OK, no error
-            
-        } catch (e) {
-            console.warn('Could not validate transcode response:', e);
-            return null; // Assume it's OK if we can't check (likely CORS or network issue)
-        }
-    }
-    
     cancelLoading() {
         console.log('Loading cancelled by user');
         this.isLoadingCancelled = true;
@@ -2038,71 +1909,31 @@ class M3UPlayerApp {
                 }
             };
 
-            // Wrap URL with server-side audio transcoding for compatibility
-            // This handles unsupported codecs like E-AC-3 (Dolby) by transcoding to AAC
-            const streamUrl = this.getTranscodedStreamUrl(url);
-            console.log(`Original URL: ${url.substring(0, 100)}...`);
-            console.log(`Transcode URL: ${streamUrl}`);
-            
-            // Validate transcode endpoint before loading
-            this.validateTranscodeResponse(streamUrl).then(validationError => {
-                if (validationError) {
-                    // Validation failed, but don't reject - let playback try anyway
-                    // Error handlers in mpegts.js will catch real problems
-                    console.warn('⚠️  Transcode validation returned:', validationError);
-                    console.warn('    Continuing with playback anyway (mpegts.js will handle errors)');
+            // Use mpegts.js for ALL streams - it handles MPEG-TS natively
+            if (typeof mpegts !== 'undefined' && mpegts.getFeatureList().mseLivePlayback) {
+                console.log('Using mpegts.js for MPEG-TS stream playback...');
+                
+                // Destroy previous player if exists
+                if (this.mpegtsPlayer) {
+                    this.mpegtsPlayer.destroy();
+                    this.mpegtsPlayer = null;
                 }
                 
-                // Always proceed with playback - error handlers will catch real issues
-                continueWithPlayback();
-            }).catch(e => {
-                console.warn('Validation check failed, continuing anyway:', e);
-                continueWithPlayback();
-            });
-            const continueWithPlayback = () => {
-                // Use mpegts.js for ALL streams - it handles MPEG-TS natively
-                if (typeof mpegts !== 'undefined' && mpegts.getFeatureList().mseLivePlayback) {
-                    console.log('Using mpegts.js for MPEG-TS stream playback...');
-                    
-                    // Destroy previous player if exists
-                    if (this.mpegtsPlayer) {
-                        this.mpegtsPlayer.destroy();
-                        this.mpegtsPlayer = null;
-                    }
-                    
-                    const profile = this.getEffectiveProfileName(channel);
-                    // Use the transcoded stream URL instead of the original URL
-                    const config = this.getMpegtsPlayerConfig(streamUrl, profile);
+                const profile = this.getEffectiveProfileName(channel);
+                const config = this.getMpegtsPlayerConfig(url, profile);
 
-                    // Create MPEG-TS player (default profile keeps the original settings unchanged)
-                    this.mpegtsPlayer = mpegts.createPlayer(config);
-                    
-                    // Attach to video element
-                    this.mpegtsPlayer.attachMediaElement(this.videoPlayer);
-                    
-                    // Restore audio settings immediately for ALL streams (not just reconnects)
-                    this.videoPlayer.volume = this.volume / 100;
-                    this.videoPlayer.muted = false;
+                // Create MPEG-TS player (default profile keeps the original settings unchanged)
+                this.mpegtsPlayer = mpegts.createPlayer(config);
                 
-                // Extra safety: ensure audio is not blocked by browser autoplay policy
-                // Try to play immediately to force audio initialization
-                this.videoPlayer.play().then(() => {
-                    console.log('✓ Autoplay started successfully');
-                }).catch(() => {
-                    console.warn('⚠️ Autoplay blocked, will enable muted playback');
-                    this.videoPlayer.muted = true;
-                    this.videoPlayer.play().catch(e => console.warn('Even muted playback failed:', e));
-                });
-                
-                console.log('Audio initialized: volume=' + this.volume + '%, muted=false');
+                // Attach to video element
+                this.mpegtsPlayer.attachMediaElement(this.videoPlayer);
                 
                 // Load and play
                 this.mpegtsPlayer.load();
                 
                 // Handle errors - with automatic recovery and auto-reconnect
-                let _recoveryAttempts = 0;
+                let _recoveryAttempted = false;
                 let _reconnectAttempts = 0;
-                const maxRecoveryAttempts = 3;
                 const maxReconnectAttempts = 5;
                 
                 this.mpegtsPlayer.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
@@ -2111,61 +1942,15 @@ class M3UPlayerApp {
                         const infoStr = (errorInfo && (errorInfo.msg || errorInfo.message || errorInfo.toString())) || '';
                         const combined = `${detailStr} ${infoStr}`.toLowerCase();
 
-                        console.log('Stream error detected:', { errorType, detailStr, infoStr });
-
-                        // Specific recovery for audio initialization failures
-                        if (_recoveryAttempts < maxRecoveryAttempts && (combined.includes('appendinitsegment') || combined.includes('unhandled error'))) {
-                            console.error(`❌ Audio SourceBuffer initialization failed (recovery attempt ${_recoveryAttempts + 1}/${maxRecoveryAttempts})`);
-                            _recoveryAttempts++;
-                            
-                            // Audio codec may be unsupported (e.g., ec-3/Dolby)
-                            // Try with a fresh player - sometimes retry helps
-                            if (_recoveryAttempts === 1) {
-                                console.log('First audio error - retrying with transcode endpoint...');
-                                try {
-                                    if (this.mpegtsPlayer) {
-                                        this.mpegtsPlayer.destroy();
-                                        this.mpegtsPlayer = null;
-                                    }
-                                    
-                                    setTimeout(() => {
-                                        try {
-                                            // Use transcoded stream URL for retry (encode the original URL)
-                                            const transcodedUrl = `/stream?url=${encodeURIComponent(url)}`;
-                                            const newConfig = this.getMpegtsPlayerConfig(transcodedUrl, profile);
-                                            this.mpegtsPlayer = mpegts.createPlayer(newConfig);
-                                            this.mpegtsPlayer.attachMediaElement(this.videoPlayer);
-                                            this.videoPlayer.volume = this.volume / 100;
-                                            this.videoPlayer.muted = false;
-                                            this.mpegtsPlayer.load();
-                                            console.log('Fresh player loaded with transcode endpoint for audio retry');
-                                        } catch (e) {
-                                            console.error('Fresh player load failed:', e);
-                                        }
-                                    }, 500);
-                                } catch (e) {
-                                    console.error('Audio recovery attempt failed:', e);
-                                }
-                            } else {
-                                // After first retry fails, just continue with muted audio
-                                console.warn('⚠️ Audio codec appears unsupported, continuing with video only');
-                                this.videoPlayer.muted = true;
-                                // DON'T return here - let the stream continue
-                            }
-                            return;
-                        }
-
-                        // Specific recovery for SourceBuffer removed (common codec/stream issues)
-                        // This can happen on first attempt or after reconnect
-                        if (_recoveryAttempts < maxRecoveryAttempts && (combined.includes('sourcebuffer') || combined.includes('removed from the parent media source') || combined.includes('invalidstateerror'))) {
-                            console.warn(`Detected SourceBuffer/codec issue (recovery attempt ${_recoveryAttempts + 1}/${maxRecoveryAttempts}); attempting automatic recovery...`);
-                            _recoveryAttempts++;
+                        // Specific recovery for SourceBuffer removed race (common in rapid reloads)
+                        if (!_recoveryAttempted && (combined.includes('sourcebuffer') || combined.includes('removed from the parent media source'))) {
+                            console.warn('Detected SourceBuffer removal; attempting automatic recovery...');
+                            _recoveryAttempted = true;
 
                             try {
+                                const savedUrl = url;
                                 const savedProfile = profile;
-                                // First recovery: try direct URL, second recovery: try transcode
-                                const recoveryUrl = _recoveryAttempts > 1 ? `/stream?url=${encodeURIComponent(url)}` : url;
-                                const savedConfig = this.getMpegtsPlayerConfig(recoveryUrl, savedProfile);
+                                const savedConfig = this.getMpegtsPlayerConfig(savedUrl, savedProfile);
                                 const savedVideo = this.videoPlayer;
 
                                 this.mpegtsPlayer.destroy();
@@ -2173,16 +1958,8 @@ class M3UPlayerApp {
 
                                 setTimeout(() => {
                                     try {
-                                        console.log('Recovery: Creating fresh player with clean MediaSource...');
                                         this.mpegtsPlayer = mpegts.createPlayer(savedConfig);
                                         this.mpegtsPlayer.attachMediaElement(savedVideo);
-                                        
-                                        // FORCE audio to be enabled on recovery - CRITICAL FIX
-                                        // Don't rely on saved audio state, force it to be on
-                                        savedVideo.volume = this.volume / 100;
-                                        savedVideo.muted = false;
-                                        console.log('Recovery: Audio FORCED - volume=' + this.volume + '%, muted=false');
-                                        
                                         this.mpegtsPlayer.load();
                                         console.log('Recovery: player recreated and reloaded');
                                         // Attempt to play after recovery
@@ -2206,30 +1983,12 @@ class M3UPlayerApp {
                                 _reconnectAttempts++;
                                 const retryDelay = Math.min(1000 * _reconnectAttempts, 10000);
                                 console.log(`Reconnect attempt ${_reconnectAttempts}/${maxReconnectAttempts} in ${retryDelay}ms`);
-                                // Force audio to be enabled before reconnect
                                 setTimeout(() => {
                                     try {
                                         if (this.mpegtsPlayer) {
                                             this.mpegtsPlayer.destroy();
                                         }
-                                        // Reconnect with forced audio
-                                        const reconnectPromise = this.playChannel(channel);
-                                        if (reconnectPromise && reconnectPromise.then) {
-                                            reconnectPromise.then(() => {
-                                                // FORCE audio after reconnect (don't rely on saved state)
-                                                this.videoPlayer.volume = this.volume / 100;
-                                                this.videoPlayer.muted = false;
-                                                console.log('Audio FORCED after reconnect: volume=' + this.volume + '%, muted=false');
-                                            }).catch(e => {
-                                                console.error('Reconnect promise failed:', e);
-                                            });
-                                        } else {
-                                            // Fallback: force audio immediately if no promise
-                                            setTimeout(() => {
-                                                this.videoPlayer.volume = this.volume / 100;
-                                                this.videoPlayer.muted = false;
-                                            }, 500);
-                                        }
+                                        this.playChannel(channel);
                                     } catch (e) {
                                         console.error('Reconnect failed:', e);
                                     }
@@ -2248,90 +2007,24 @@ class M3UPlayerApp {
                     }
                 });
                 
-                // Add a watchdog timer to detect if stream is stuck and force recovery
-                let hasData = false;
-                let watchdogTimer = null;
-                let watchdogAttempts = 0;
-                
-                this.mpegtsPlayer.on(mpegts.Events.BUFFERING_COMPLETE, () => {
-                    hasData = true;
-                    console.log('Stream data received - watchdog cleared');
-                });
-                
-                this.mpegtsPlayer.on(mpegts.Events.STATISTICS_INFO, () => {
-                    hasData = true;
-                });
-                
-                // Watchdog: if no data arrives in 10 seconds, force recovery
-                watchdogTimer = setTimeout(() => {
-                    if (!hasData && watchdogAttempts < 3) {
-                        console.error('⚠️  WATCHDOG: No stream data received after 10 seconds - forcing recovery...');
-                        watchdogAttempts++;
-                        try {
-                            if (this.mpegtsPlayer) {
-                                this.mpegtsPlayer.destroy();
-                                this.mpegtsPlayer = null;
-                            }
-                            
-                            setTimeout(() => {
-                                console.log('WATCHDOG: Reloading stream with FORCED audio...');
-                                // First watchdog: try direct, second watchdog: try transcode
-                                const watchdogUrl = watchdogAttempts > 1 ? `/stream?url=${encodeURIComponent(url)}` : url;
-                                const newConfig = this.getMpegtsPlayerConfig(watchdogUrl, profile);
-                                this.mpegtsPlayer = mpegts.createPlayer(newConfig);
-                                this.mpegtsPlayer.attachMediaElement(this.videoPlayer);
-                                
-                                // FORCE audio to be enabled on recovery - this is critical
-                                this.videoPlayer.volume = this.volume / 100;
-                                this.videoPlayer.muted = false;
-                                console.log('WATCHDOG: Audio FORCED - volume=' + this.volume + '%, muted=false');
-                                
-                                this.mpegtsPlayer.load();
-                            }, 500);
-                        } catch (e) {
-                            console.error('WATCHDOG recovery failed:', e);
-                        }
-                    }
-                }, 10000);
-                
-                // Clean up watchdog when stream successfully plays
-                this.videoPlayer.addEventListener('playing', () => {
-                    if (watchdogTimer) {
-                        clearTimeout(watchdogTimer);
-                        console.log('Stream playing - watchdog disabled');
-                    }
-                }, { once: true });
-                
                 // Play when ready
                 setTimeout(() => {
-                    // Ensure audio is enabled right before playing
-                    this.videoPlayer.volume = this.volume / 100;
-                    this.videoPlayer.muted = false;
-                    
                     this.videoPlayer.play().then(() => {
-                        console.log('✓ MPEG-TS playback started successfully with audio!');
+                        console.log('MPEG-TS playback started successfully!');
                         resolveOnce();
                     }).catch(err => {
-                        console.warn('Autoplay with audio failed, trying muted:', err);
-                        // Only mute as a fallback if autoplay policy requires it
-                        this.videoPlayer.muted = true;
+                        console.warn('Autoplay failed, but stream is ready:', err);
+                        this.videoPlayer.muted = false;
                         this.videoPlayer.play().then(() => {
-                            // Try to unmute after a brief delay
-                            setTimeout(() => {
-                                this.videoPlayer.muted = false;
-                                this.videoPlayer.volume = this.volume / 100;
-                                console.log('Audio unmuted after muted playback start');
-                            }, 500);
                             resolveOnce();
                         }).catch(() => {
                             resolveOnce(); // Stream is ready even if autoplay fails
                         });
                     });
                 }, 200);
-                } else {
-                    rejectOnce(new Error('MPEG-TS playback not supported - MSE Live Playback required'));
-                }
-            }; // End continueWithPlayback function definition
+            } else {
+                rejectOnce(new Error('MPEG-TS playback not supported - MSE Live Playback required'));
+            }
         });
     }
 

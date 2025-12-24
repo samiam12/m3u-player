@@ -21,8 +21,8 @@ import shutil
 import requests
 from pathlib import Path
 
-# Use PORT from environment (Render) or default to 10000
-PORT = int(os.environ.get('PORT', 10000))
+# Use PORT from environment (Render) or default to 8002
+PORT = int(os.environ.get('PORT', 8002))
 
 print("[SERVER] Starting M3U Player Server")
 print(f"[SERVER] Using direct HTTP streaming for recording")
@@ -62,36 +62,10 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         """Handle preflight CORS requests"""
         self.send_response(200)
         self.end_headers()
-    
-    def do_HEAD(self):
-        """Handle HEAD requests - delegates to GET without sending body"""
-        # For HEAD requests, we just check if the path is valid
-        # The body is automatically omitted by the HTTP spec
-        print(f"[SERVER] HEAD {self.path}")
-        
-        # Check if this is a transcode endpoint
-        if self.path.startswith('/stream?'):
-            # For transcode validation, just send 200 OK without actually starting ffmpeg
-            self.send_response(200)
-            self.send_header('Content-Type', 'video/mp2t')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            return
-        
-        # For other paths, use default behavior
-        super().do_HEAD()
 
     def do_GET(self):
         """Handle GET requests with proxy support"""
         print(f"[SERVER] GET {self.path}")
-        # Health check endpoint
-        if self.path == '/healthz' or self.path == '/':
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/plain')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            self.wfile.write(b'OK')
-            return
         # Party endpoints
         if self.path.startswith('/party/create'):
             self.handle_party_create()
@@ -114,9 +88,6 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         # Proxy endpoint for CORS bypass
         elif self.path.startswith('/proxy?'):
             self.handle_proxy()
-        # Stream transcoding endpoint for audio codec conversion
-        elif self.path.startswith('/stream?'):
-            self.handle_stream_transcode()
         else:
             # Regular file serving
             super().do_GET()
@@ -441,300 +412,7 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             traceback.print_exc()
             self.send_error(500, f"Proxy error: {str(e)}")
 
-    def handle_stream_transcode(self):
-        """Stream with audio codec transcoding (E-AC-3 → AAC) + HEVC detection
-        
-        Architecture:
-        - Input: MPEG-TS stream (may have E-AC-3, broken timestamps, etc)
-        - Probe: Detect video codec (H.264 vs HEVC)
-        - FFmpeg: Transcode audio E-AC-3 → AAC, handle video based on codec
-        - Output: MPEG-TS with AAC audio (Chrome-safe, mpegts.js compatible)
-        
-        Video codec handling:
-        - H.264: Copy video as-is (fast, no quality loss)
-        - HEVC: Auto-transcode to H.264 (libx264 veryfast preset)
-        
-        Audio: Always transcode to AAC (browser requirement)
-        
-        Key flags for IPTV stability:
-        - genpts+igndts: Generate missing PTS, ignore broken DTS
-        - reconnect: Auto-reconnect on timeout
-        - ac 2: Force stereo audio
-        
-        Error responses:
-        - 415: Unsupported codec (only if codec detection fails)
-        - 502: FFmpeg crash or transcode error
-        - 503: FFmpeg unavailable on server
-        """
-        try:
-            # Parse query parameters
-            parsed_path = urllib.parse.urlparse(self.path)
-            query_params = urllib.parse.parse_qs(parsed_path.query)
-            target_url = query_params.get('url', [None])[0]
-            
-            if not target_url:
-                self.send_error(400, "Missing 'url' parameter")
-                return
-            
-            # Decode URL
-            target_url = urllib.parse.unquote(target_url)
-            
-            print(f"[TRANSCODE] Request for: {target_url[:80]}...", flush=True)
-            
-            # Check if ffmpeg/ffprobe are available
-            ffmpeg_available = False
-            ffprobe_available = False
-            try:
-                result = subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=5)
-                ffmpeg_available = result.returncode == 0
-                result = subprocess.run(['ffprobe', '-version'], capture_output=True, timeout=5)
-                ffprobe_available = result.returncode == 0
-                print(f"[TRANSCODE] ffmpeg: {ffmpeg_available}, ffprobe: {ffprobe_available}", flush=True)
-            except Exception as e:
-                print(f"[TRANSCODE] Tool check failed: {e}", flush=True)
-            
-            # If ffmpeg not available, fall back to direct proxy
-            if not ffmpeg_available:
-                print("[TRANSCODE] ffmpeg unavailable, using direct proxy stream", flush=True)
-                return self.handle_proxy_stream(target_url)
-            
-            # Detect video codec using ffprobe (if available)
-            video_codec = 'h264'  # Default assumption
-            needs_video_transcode = False
-            
-            if ffprobe_available:
-                try:
-                    print("[TRANSCODE] Probing stream codec...", flush=True)
-                    probe_cmd = [
-                        'ffprobe',
-                        '-v', 'error',
-                        '-select_streams', 'v:0',
-                        '-show_entries', 'stream=codec_name',
-                        '-of', 'json',
-                        '-timeout', '10',  # 10s timeout to avoid stalls on dead feeds
-                        target_url
-                    ]
-                    result = subprocess.run(probe_cmd, capture_output=True, timeout=15, text=True)
-                    
-                    if result.returncode == 0:
-                        try:
-                            probe_data = json.loads(result.stdout)
-                            if probe_data.get('streams') and len(probe_data['streams']) > 0:
-                                video_codec = probe_data['streams'][0].get('codec_name', 'h264').lower()
-                                print(f"[TRANSCODE] Detected codec: {video_codec}", flush=True)
-                                needs_video_transcode = video_codec == 'hevc'
-                        except json.JSONDecodeError:
-                            print("[TRANSCODE] Failed to parse probe output, assuming H.264", flush=True)
-                    else:
-                        print(f"[TRANSCODE] Probe failed: {result.stderr[:200]}, assuming H.264", flush=True)
-                        
-                except subprocess.TimeoutExpired:
-                    print("[TRANSCODE] Probe timeout, assuming H.264", flush=True)
-                except Exception as e:
-                    print(f"[TRANSCODE] Probe error: {e}, assuming H.264", flush=True)
-            
-            # Build ffmpeg command based on detected codec
-            video_codec_opt = '-c:v'
-            video_codec_arg = 'copy'
-            
-            if needs_video_transcode:
-                print("[TRANSCODE] HEVC detected → re-encoding video (libx264, veryfast)", flush=True)
-                video_codec_arg = 'libx264'
-                # Additional options for H.264 encoding
-                ffmpeg_cmd = [
-                    'ffmpeg',
-                    '-reconnect', '1',
-                    '-reconnect_streamed', '1',
-                    '-reconnect_delay_max', '2',
-                    '-fflags', '+genpts+igndts',
-                    '-flags', 'low_delay',
-                    '-hide_banner',
-                    '-loglevel', 'error',
-                    '-i', target_url,
-                    '-c:v', 'libx264',                # Transcode video to H.264
-                    '-preset', 'veryfast',            # Balance speed vs quality
-                    '-tune', 'zerolatency',           # Optimize for low latency
-                    '-c:a', 'aac',
-                    '-b:a', '128k',
-                    '-ac', '2',
-                    '-f', 'mpegts',
-                    '-'
-                ]
-            else:
-                # H.264: copy video, only transcode audio
-                ffmpeg_cmd = [
-                    'ffmpeg',
-                    '-reconnect', '1',
-                    '-reconnect_streamed', '1',
-                    '-reconnect_delay_max', '2',
-                    '-fflags', '+genpts+igndts',
-                    '-flags', 'low_delay',
-                    '-hide_banner',
-                    '-loglevel', 'error',
-                    '-i', target_url,
-                    '-c:v', 'copy',                   # Copy video (no transcode)
-                    '-c:a', 'aac',                    # Transcode audio to AAC
-                    '-b:a', '128k',
-                    '-ac', '2',
-                    '-f', 'mpegts',
-                    '-'
-                ]
-            
-            print(f"[TRANSCODE] Starting ffmpeg...", flush=True)
-            
-            try:
-                # Start ffmpeg process
-                process = subprocess.Popen(
-                    ffmpeg_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    bufsize=65536
-                )
-                
-                print("[TRANSCODE] ffmpeg process started, streaming to client...", flush=True)
-                
-                # Send HTTP response headers for MPEG-TS
-                self.send_response(200)
-                self.send_header('Content-Type', 'video/mp2t')  # MPEG-TS MIME type
-                self.send_header('Transfer-Encoding', 'chunked')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Cache-Control', 'no-cache, no-store')
-                self.end_headers()
-                
-                # Stream chunks from ffmpeg to client
-                chunk_size = 8192
-                bytes_sent = 0
-                first_chunk = True
-                no_data_timeout = 10  # seconds
-                last_data_time = time.time()
-                
-                while True:
-                    chunk = process.stdout.read(chunk_size)
-                    
-                    # Check for ffmpeg process errors
-                    if process.poll() is not None:
-                        print(f"[TRANSCODE] ffmpeg process ended prematurely with code {process.returncode}", flush=True)
-                        stderr_output = process.stderr.read(1000).decode('utf-8', errors='ignore')
-                        if stderr_output:
-                            print(f"[TRANSCODE] ffmpeg stderr: {stderr_output}", flush=True)
-                        if bytes_sent == 0:
-                            # No data sent yet, ffmpeg failed immediately - fall back to direct proxy
-                            print("[TRANSCODE] ffmpeg failed before sending data, falling back to direct proxy", flush=True)
-                            process.kill()
-                            return self.handle_proxy_stream(target_url)
-                        break
-                    
-                    if not chunk:
-                        # No data available
-                        if time.time() - last_data_time > no_data_timeout:
-                            print(f"[TRANSCODE] No data for {no_data_timeout}s, likely dead stream", flush=True)
-                            if bytes_sent == 0:
-                                print("[TRANSCODE] No data sent, falling back to direct proxy", flush=True)
-                                process.kill()
-                                return self.handle_proxy_stream(target_url)
-                            break
-                        # Short sleep to avoid busy loop
-                        import time as time_module
-                        time_module.sleep(0.01)
-                        continue
-                    
-                    last_data_time = time.time()
-                    
-                    if first_chunk:
-                        print(f"[TRANSCODE] First chunk received ({len(chunk)} bytes)", flush=True)
-                        first_chunk = False
-                    
-                    try:
-                        self.wfile.write(chunk)
-                        bytes_sent += len(chunk)
-                    except BrokenPipeError:
-                        print(f"[TRANSCODE] Client disconnected after {bytes_sent} bytes", flush=True)
-                        break
-                
-                # Clean up process
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    print("[TRANSCODE] ffmpeg timeout, killing process", flush=True)
-                    process.kill()
-                
-                print(f"[TRANSCODE] Stream complete, sent {bytes_sent} bytes", flush=True)
-                
-            except BrokenPipeError:
-                print(f"[TRANSCODE] Client disconnected", flush=True)
-                
-            except Exception as e:
-                error_msg = str(e)
-                print(f"[TRANSCODE] ffmpeg error: {error_msg}", flush=True)
-                import traceback
-                traceback.print_exc()
-                
-                try:
-                    process.kill()
-                except:
-                    pass
-                
-                # If ffmpeg fails completely, fall back to direct proxy
-                print("[TRANSCODE] ffmpeg failed, falling back to direct proxy", flush=True)
-                return self.handle_proxy_stream(target_url)
-                
-        except Exception as e:
-            print(f"[TRANSCODE] Handler error: {str(e)}", flush=True)
-            import traceback
-            traceback.print_exc()
-            
-            self.send_response(500)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            
-            error_response = json.dumps({
-                'error': 'server_error',
-                'details': 'Internal server error',
-                'message': str(e)[:200]
-            })
-            self.wfile.write(error_response.encode())
-
-    def handle_proxy_stream(self, target_url):
-        """Fallback: proxy stream directly without transcoding"""
-        try:
-            print(f"[PROXY_STREAM] Direct stream: {target_url[:80]}...")
-            
-            req = urllib.request.Request(target_url)
-            req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-            req.add_header('Accept', '*/*')
-            
-            with urllib.request.urlopen(req, timeout=60) as response:
-                # Send response headers
-                self.send_response(200)
-                self.send_header('Content-Type', response.headers.get('Content-Type', 'video/mp2t'))
-                self.send_header('Transfer-Encoding', 'chunked')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                
-                # Stream chunks
-                chunk_size = 65536
-                bytes_sent = 0
-                while True:
-                    chunk = response.read(chunk_size)
-                    if not chunk:
-                        break
-                    
-                    try:
-                        self.wfile.write(chunk)
-                        bytes_sent += len(chunk)
-                    except BrokenPipeError:
-                        print(f"[PROXY_STREAM] Client disconnected after {bytes_sent} bytes")
-                        break
-                
-                print(f"[PROXY_STREAM] Stream complete, sent {bytes_sent} bytes")
-                
-        except Exception as e:
-            print(f"[PROXY_STREAM] Error: {str(e)}")
-            self.send_error(502, f"Stream error: {str(e)}")
-
-    # ==================== PROXY HANDLER ====================
+    # ==================== RECORDING HANDLERS ====================
 
     def handle_recording_start(self):
         """Start recording a stream"""
@@ -784,20 +462,12 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             chunk_size = 8192
                             max_duration = 36000  # 10 hours
                             start_time = time.time()
-                            last_data_time = time.time()  # Track when data last arrived
-                            no_data_timeout = 2  # Stop recording if no data for 2 seconds
                             
                             with open(filepath, 'wb') as f:
                                 for chunk in response.iter_content(chunk_size=chunk_size):
                                     if chunk:
                                         f.write(chunk)
                                         bytes_written += len(chunk)
-                                        last_data_time = time.time()  # Update on each chunk
-                                    else:
-                                        # No data - check if stream ended
-                                        if time.time() - last_data_time > no_data_timeout:
-                                            print(f"[RECORDING] No data for {no_data_timeout}s, assuming stream ended", flush=True)
-                                            break
                                     
                                     # Check duration limit
                                     elapsed = time.time() - start_time
@@ -813,20 +483,17 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             print(f"[RECORDING] Request error: {str(e)}", flush=True)
 
                         
-                        # Store recording info - calculate duration from actual recording time
+                        # Store recording info with actual start time
                         if filepath.exists():
                             size = filepath.stat().st_size
-                            # Use the actual elapsed time from when we started recording
-                            # This reflects the real duration of the recording period
-                            actual_end_time = int(time.time())
-                            duration = max(1, actual_end_time - actual_start_time)  # At least 1 second
+                            duration = int(time.time()) - actual_start_time
                             RECORDED_FILES[filename] = {
                                 'channel': channel,
                                 'size': size,
                                 'duration': duration,
                                 'timestamp': actual_start_time
                             }
-                            print(f"[RECORDING] Complete: {filename} ({size} bytes, {duration}s elapsed)", flush=True)
+                            print(f"[RECORDING] Complete: {filename} ({size} bytes, {duration}s)", flush=True)
                         else:
                             print(f"[RECORDING] File not created: {filepath}", flush=True)
 
@@ -869,21 +536,9 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             data = json.loads(body.decode())
             
             print(f"[RECORDING] Stop request for channel: {data.get('channel')}")
-            print(f"[RECORDING] Client-reported duration: {data.get('duration')}s")
             print(f"[RECORDING] Active recordings: {list(ACTIVE_RECORDINGS.keys())}")
             
-            # Find the active recording and update its duration from client
-            client_duration = data.get('duration', 0)
-            
-            # Update RECORDED_FILES with client's more accurate duration measurement
-            for filename, rec_info in list(RECORDED_FILES.items()):
-                if rec_info.get('channel') == data.get('channel'):
-                    if client_duration > 0:
-                        rec_info['duration'] = client_duration
-                        print(f"[RECORDING] Updated duration for {filename}: {client_duration}s (from client)")
-                    break
-            
-            # Try to stop any active recording process
+            # Find and stop the active recording
             stopped = False
             for filename, rec_info in list(ACTIVE_RECORDINGS.items()):
                 if rec_info.get('channel') == data.get('channel'):
@@ -914,9 +569,9 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         stopped = True
             
             if not stopped:
-                print(f"[RECORDING] No matching recording found to stop (but duration updated)")
+                print(f"[RECORDING] No matching recording found to stop")
             
-            response = json.dumps({'success': True})
+            response = json.dumps({'success': stopped})
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(response)))
