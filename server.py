@@ -84,6 +84,14 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         """Handle GET requests with proxy support"""
         print(f"[SERVER] GET {self.path}")
+        # Health check endpoint
+        if self.path == '/healthz' or self.path == '/':
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(b'OK')
+            return
         # Party endpoints
         if self.path.startswith('/party/create'):
             self.handle_party_create()
