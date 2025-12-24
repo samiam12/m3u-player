@@ -1925,14 +1925,11 @@ class M3UPlayerApp {
     /**
      * Wrap a stream URL to use server-side audio transcoding
      * This converts unsupported audio codecs (like ec-3) to AAC
+     * Returns the original URL for now - transcode is fallback only
      */
     getTranscodedStreamUrl(url) {
-        // For MPEG-TS streams, wrap them with the server transcode endpoint
-        // This will handle codec conversion transparently
-        if (url && (url.includes('mpegts') || url.endsWith('.ts') || url.includes('://'))) {
-            const encoded = encodeURIComponent(url);
-            return `/stream?url=${encoded}`;
-        }
+        // For now, return the original URL
+        // Transcode endpoint will be used only on audio errors
         return url;
     }
     
@@ -2039,7 +2036,7 @@ class M3UPlayerApp {
                             // Audio codec may be unsupported (e.g., ec-3/Dolby)
                             // Try with a fresh player - sometimes retry helps
                             if (_recoveryAttempts === 1) {
-                                console.log('First audio error - retrying with fresh player via transcode...');
+                                console.log('First audio error - retrying with transcode endpoint...');
                                 try {
                                     if (this.mpegtsPlayer) {
                                         this.mpegtsPlayer.destroy();
@@ -2048,14 +2045,15 @@ class M3UPlayerApp {
                                     
                                     setTimeout(() => {
                                         try {
-                                            // Use transcoded stream URL for retry
-                                            const newConfig = this.getMpegtsPlayerConfig(streamUrl, profile);
+                                            // Use transcoded stream URL for retry (encode the original URL)
+                                            const transcodedUrl = `/stream?url=${encodeURIComponent(url)}`;
+                                            const newConfig = this.getMpegtsPlayerConfig(transcodedUrl, profile);
                                             this.mpegtsPlayer = mpegts.createPlayer(newConfig);
                                             this.mpegtsPlayer.attachMediaElement(this.videoPlayer);
                                             this.videoPlayer.volume = this.volume / 100;
                                             this.videoPlayer.muted = false;
                                             this.mpegtsPlayer.load();
-                                            console.log('Fresh player loaded with transcode for audio retry');
+                                            console.log('Fresh player loaded with transcode endpoint for audio retry');
                                         } catch (e) {
                                             console.error('Fresh player load failed:', e);
                                         }
@@ -2075,13 +2073,14 @@ class M3UPlayerApp {
                         // Specific recovery for SourceBuffer removed (common codec/stream issues)
                         // This can happen on first attempt or after reconnect
                         if (_recoveryAttempts < maxRecoveryAttempts && (combined.includes('sourcebuffer') || combined.includes('removed from the parent media source') || combined.includes('invalidstateerror'))) {
-                            console.warn(`Detected SourceBuffer/codec issue (recovery attempt ${_recoveryAttempts + 1}/${maxRecoveryAttempts}); attempting automatic recovery with transcode...`);
+                            console.warn(`Detected SourceBuffer/codec issue (recovery attempt ${_recoveryAttempts + 1}/${maxRecoveryAttempts}); attempting automatic recovery...`);
                             _recoveryAttempts++;
 
                             try {
                                 const savedProfile = profile;
-                                // Use the transcoded stream URL for recovery
-                                const savedConfig = this.getMpegtsPlayerConfig(streamUrl, savedProfile);
+                                // First recovery: try direct URL, second recovery: try transcode
+                                const recoveryUrl = _recoveryAttempts > 1 ? `/stream?url=${encodeURIComponent(url)}` : url;
+                                const savedConfig = this.getMpegtsPlayerConfig(recoveryUrl, savedProfile);
                                 const savedVideo = this.videoPlayer;
 
                                 this.mpegtsPlayer.destroy();
@@ -2181,7 +2180,7 @@ class M3UPlayerApp {
                 // Watchdog: if no data arrives in 10 seconds, force recovery
                 watchdogTimer = setTimeout(() => {
                     if (!hasData && watchdogAttempts < 3) {
-                        console.error('⚠️  WATCHDOG: No stream data received after 10 seconds - forcing recovery with transcode...');
+                        console.error('⚠️  WATCHDOG: No stream data received after 10 seconds - forcing recovery...');
                         watchdogAttempts++;
                         try {
                             if (this.mpegtsPlayer) {
@@ -2190,9 +2189,10 @@ class M3UPlayerApp {
                             }
                             
                             setTimeout(() => {
-                                console.log('WATCHDOG: Reloading stream with transcode and FORCED audio...');
-                                // Use transcoded URL for watchdog recovery
-                                const newConfig = this.getMpegtsPlayerConfig(streamUrl, profile);
+                                console.log('WATCHDOG: Reloading stream with FORCED audio...');
+                                // First watchdog: try direct, second watchdog: try transcode
+                                const watchdogUrl = watchdogAttempts > 1 ? `/stream?url=${encodeURIComponent(url)}` : url;
+                                const newConfig = this.getMpegtsPlayerConfig(watchdogUrl, profile);
                                 this.mpegtsPlayer = mpegts.createPlayer(newConfig);
                                 this.mpegtsPlayer.attachMediaElement(this.videoPlayer);
                                 
